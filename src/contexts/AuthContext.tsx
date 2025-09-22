@@ -231,17 +231,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         permissions: ROLE_PERMISSIONS.cbg_sales,
         lastAccess: new Date()
       },
-      '+916543210987': {
-        id: 'bd-001',
-        phone: '+916543210987',
-        email: 'businessdev@saubhagya.com',
-        name: 'Amit Singh (Business Development)',
-        role: 'business_dev',
-        department: 'Business Development',
-        appType: 'urjasanyojak',
-        permissions: ROLE_PERMISSIONS.business_dev,
-        lastAccess: new Date()
-      },
+      // '+916543210987': {
+      //   id: 'bd-001',
+      //   phone: '+916543210987',
+      //   email: 'businessdev@saubhagya.com',
+      //   name: 'Amit Singh (Business Development)',
+      //   role: 'business_dev',
+      //   department: 'Business Development',
+      //   appType: 'urjasanyojak',
+      //   permissions: ROLE_PERMISSIONS.business_dev,
+      //   lastAccess: new Date()
+      // },
       '+915432109876': {
         id: 'admin-001',
         phone: '+915432109876',

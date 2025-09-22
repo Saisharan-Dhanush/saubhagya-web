@@ -9,7 +9,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
-import { Search, Bell, Menu, X } from 'lucide-react';
+import { Search, Bell, Menu, X, LogOut } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 
 export interface NavigationItem {
   id: string;
@@ -57,6 +58,15 @@ export default function BaseLayout({
   contentClassName
 }: BaseLayoutProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { logout } = useAuth();
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -218,6 +228,16 @@ export default function BaseLayout({
                     </span>
                   )}
                 </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleLogout}
+                  className="text-gray-600 hover:text-red-600 hover:bg-red-50"
+                  title="Logout"
+                >
+                  <LogOut className="w-4 h-4" />
+                  <span className="sr-only">Logout</span>
+                </Button>
               </div>
             )}
           </div>
