@@ -271,8 +271,8 @@ export default function BaseLayout({
         {/* Main Content */}
         <main
           className={cn(
-            "pt-16 min-h-screen w-full p-6",
-            breadcrumbs && breadcrumbs.length > 0 ? "pt-16 mt-12" : "pt-16",
+            "pt-20 min-h-screen w-full p-6",
+            breadcrumbs && breadcrumbs.length > 0 ? "pt-20 mt-12" : "pt-20",
             contentClassName
           )}
         >
