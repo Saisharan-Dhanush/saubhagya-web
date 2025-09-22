@@ -1,0 +1,184 @@
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
+import { AuthProvider, useAuth } from './contexts/AuthContext'
+import { PlatformProvider } from './contexts/PlatformContext'
+import { CollaborationProvider } from './contexts/CollaborationContext'
+import { PerformanceProvider } from './contexts/PerformanceContext'
+import Login from './pages/Login'
+import Dashboard from './pages/Dashboard'
+import Purification from './pages/Purification'
+import Sales from './pages/Sales'
+import Admin from './pages/Admin'
+import UrjaNeta from './pages/UrjaNeta'
+import Testing from './pages/Testing'
+import DatabaseSetup from './pages/DatabaseSetup'
+import ExecutiveDashboard from './pages/ExecutiveDashboard'
+import UrjaSanyojakDemo from './UrjaSanyojakDemo'
+import RFIDManagement from './pages/RFIDManagement'
+import BiogasSangh from './pages/BiogasSangh'
+import UrjaSanyojak from './pages/UrjaSanyojak'
+import GauShala from './pages/GauShala'
+import TransporterModule from './modules/transporter'
+import Layout from './components/Layout'
+import CollaborativeDashboard from './components/collaboration/CollaborativeDashboard'
+import PerformanceDashboard from './components/performance/PerformanceDashboard'
+import RoleBasedRouter from './components/routing/RoleBasedRouter'
+
+function PrivateRoute({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth()
+  
+  if (loading) {
+    return <div className="flex items-center justify-center min-h-screen">Loading...</div>
+  }
+  
+  return user ? <>{children}</> : <Navigate to="/login" />
+}
+
+function AppRoutes() {
+  return (
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route path="/" element={
+        <PrivateRoute>
+          <RoleBasedRouter />
+          <Layout>
+            <Dashboard />
+          </Layout>
+        </PrivateRoute>
+      } />
+      <Route path="/dashboard" element={
+        <PrivateRoute>
+          <Layout>
+            <Dashboard />
+          </Layout>
+        </PrivateRoute>
+      } />
+      <Route path="/rfid-management" element={
+        <PrivateRoute>
+          <Layout>
+            <RFIDManagement />
+          </Layout>
+        </PrivateRoute>
+      } />
+      <Route path="/executive-dashboard" element={
+        <PrivateRoute>
+          <Layout>
+            <ExecutiveDashboard />
+          </Layout>
+        </PrivateRoute>
+      } />
+      <Route path="/urja-neta" element={
+        <PrivateRoute>
+          <Layout>
+            <UrjaNeta />
+          </Layout>
+        </PrivateRoute>
+      } />
+      <Route path="/purification" element={
+        <PrivateRoute>
+          <Layout>
+            <Purification />
+          </Layout>
+        </PrivateRoute>
+      } />
+      <Route path="/sales" element={
+        <PrivateRoute>
+          <Layout>
+            <Sales />
+          </Layout>
+        </PrivateRoute>
+      } />
+      <Route path="/admin" element={
+        <PrivateRoute>
+          <Layout>
+            <Admin />
+          </Layout>
+        </PrivateRoute>
+      } />
+      <Route path="/urjaneta" element={
+        <PrivateRoute>
+          <Layout>
+            <UrjaNeta />
+          </Layout>
+        </PrivateRoute>
+      } />
+      <Route path="/testing" element={
+        <PrivateRoute>
+          <Layout>
+            <Testing />
+          </Layout>
+        </PrivateRoute>
+      } />
+      <Route path="/database-setup" element={
+        <PrivateRoute>
+          <Layout>
+            <DatabaseSetup />
+          </Layout>
+        </PrivateRoute>
+      } />
+      <Route path="/executive" element={
+        <PrivateRoute>
+          <Layout>
+            <ExecutiveDashboard />
+          </Layout>
+        </PrivateRoute>
+      } />
+      <Route path="/collaboration" element={
+        <PrivateRoute>
+          <Layout>
+            <CollaborativeDashboard />
+          </Layout>
+        </PrivateRoute>
+      } />
+      <Route path="/performance" element={
+        <PrivateRoute>
+          <Layout>
+            <PerformanceDashboard />
+          </Layout>
+        </PrivateRoute>
+      } />
+      <Route path="/urjasanyojak/*" element={
+        <PrivateRoute>
+          <UrjaSanyojakDemo />
+        </PrivateRoute>
+      } />
+      <Route path="/cluster/*" element={
+        <PrivateRoute>
+          <Layout>
+            <BiogasSangh />
+          </Layout>
+        </PrivateRoute>
+      } />
+      <Route path="/urjasanyojak" element={
+        <PrivateRoute>
+          <Layout>
+            <UrjaSanyojak />
+          </Layout>
+        </PrivateRoute>
+      } />
+      <Route path="/gaushala/*" element={
+      <Route path="/transport/*" element={        <PrivateRoute>          <TransporterModule />        </PrivateRoute>      } />
+        <PrivateRoute>
+          <GauShala />
+        </PrivateRoute>
+      } />
+    </Routes>
+  )
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <PlatformProvider>
+        <CollaborationProvider>
+          <PerformanceProvider>
+            <Router>
+              <AppRoutes />
+            </Router>
+          </PerformanceProvider>
+        </CollaborationProvider>
+      </PlatformProvider>
+    </AuthProvider>
+  )
+}
+
+export default App

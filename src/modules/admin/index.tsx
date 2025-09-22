@@ -1,0 +1,1 @@
+export { default as AdminModule } from './Admin.container';

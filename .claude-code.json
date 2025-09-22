@@ -1,0 +1,11 @@
+{
+  "mcp": {
+    "servers": {
+      "shadcn-ui": {
+        "command": "npx",
+        "args": ["@jpisnice/shadcn-ui-mcp-server"],
+        "cwd": "."
+      }
+    }
+  }
+}

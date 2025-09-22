@@ -1,0 +1,613 @@
+import React, { useState, useEffect } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Plus,
+  Edit,
+  Trash2,
+  Search,
+  Filter,
+  Package,
+  Clock,
+  CheckCircle,
+  AlertCircle,
+  Truck,
+  FileText,
+  Eye,
+  Download
+} from 'lucide-react';
+
+interface BatchManagementProps {
+  languageContext?: {
+    language: 'hi' | 'en';
+    t: (key: string) => string;
+  };
+}
+
+const translations = {
+  en: {
+    title: 'Batch Management',
+    subtitle: 'Manage biogas batches from production to transfer',
+    createBatch: 'Create New Batch',
+    editBatch: 'Edit Batch',
+    deleteBatch: 'Delete Batch',
+    batchList: 'Batch List',
+    activeQualities: 'Active Quality Tests',
+    certificates: 'Quality Certificates',
+    search: 'Search batches...',
+    filter: 'Filter',
+    batchId: 'Batch ID',
+    digesterId: 'Digester ID',
+    volume: 'Volume (m³)',
+    methaneContent: 'Methane Content (%)',
+    status: 'Status',
+    createdDate: 'Created Date',
+    transferDate: 'Transfer Date',
+    qualityScore: 'Quality Score',
+    notes: 'Notes',
+    actions: 'Actions',
+    create: 'Create',
+    update: 'Update',
+    cancel: 'Cancel',
+    delete: 'Delete',
+    confirm: 'Confirm',
+    processing: 'Processing',
+    ready: 'Ready',
+    transferred: 'Transferred',
+    rejected: 'Rejected',
+    testing: 'Testing',
+    viewDetails: 'View Details',
+    downloadCert: 'Download Certificate',
+    transferBatch: 'Transfer Batch',
+    qualityTest: 'Quality Test',
+    batchDetails: 'Batch Details',
+    transferHistory: 'Transfer History',
+    qualityReports: 'Quality Reports'
+  },
+  hi: {
+    title: 'बैच प्रबंधन',
+    subtitle: 'उत्पादन से स्थानांतरण तक बायोगैस बैचों का प्रबंधन',
+    createBatch: 'नया बैच बनाएं',
+    editBatch: 'बैच संपादित करें',
+    deleteBatch: 'बैच हटाएं',
+    batchList: 'बैच सूची',
+    activeQualities: 'सक्रिय गुणवत्ता परीक्षण',
+    certificates: 'गुणवत्ता प्रमाणपत्र',
+    search: 'बैच खोजें...',
+    filter: 'फिल्टर',
+    batchId: 'बैच आईडी',
+    digesterId: 'डाइजेस्टर आईडी',
+    volume: 'आयतन (m³)',
+    methaneContent: 'मीथेन सामग्री (%)',
+    status: 'स्थिति',
+    createdDate: 'निर्मित दिनांक',
+    transferDate: 'स्थानांतरण दिनांक',
+    qualityScore: 'गुणवत्ता स्कोर',
+    notes: 'टिप्पणियां',
+    actions: 'कार्य',
+    create: 'बनाएं',
+    update: 'अपडेट करें',
+    cancel: 'रद्द करें',
+    delete: 'हटाएं',
+    confirm: 'पुष्टि करें',
+    processing: 'प्रसंस्करण',
+    ready: 'तैयार',
+    transferred: 'स्थानांतरित',
+    rejected: 'अस्वीकृत',
+    testing: 'परीक्षण',
+    viewDetails: 'विवरण देखें',
+    downloadCert: 'प्रमाणपत्र डाउनलोड करें',
+    transferBatch: 'बैच स्थानांतरित करें',
+    qualityTest: 'गुणवत्ता परीक्षण',
+    batchDetails: 'बैच विवरण',
+    transferHistory: 'स्थानांतरण इतिहास',
+    qualityReports: 'गुणवत्ता रिपोर्ट'
+  }
+};
+
+const getStatusColor = (status: BatchStatus): string => {
+  switch (status) {
+    case 'processing':
+      return 'bg-blue-100 text-blue-800';
+    case 'ready':
+      return 'bg-green-100 text-green-800';
+    case 'transferred':
+      return 'bg-gray-100 text-gray-800';
+    case 'rejected':
+      return 'bg-red-100 text-red-800';
+    case 'testing':
+      return 'bg-yellow-100 text-yellow-800';
+    default:
+      return 'bg-gray-100 text-gray-800';
+  }
+};
+
+const getStatusIcon = (status: BatchStatus) => {
+  switch (status) {
+    case 'processing':
+      return <Clock className="w-4 h-4" />;
+    case 'ready':
+      return <CheckCircle className="w-4 h-4" />;
+    case 'transferred':
+      return <Truck className="w-4 h-4" />;
+    case 'rejected':
+      return <AlertCircle className="w-4 h-4" />;
+    case 'testing':
+      return <Package className="w-4 h-4" />;
+    default:
+      return <Package className="w-4 h-4" />;
+  }
+};
+
+const BatchForm: React.FC<{
+  batch?: BatchData;
+  onSubmit: (data: Partial<BatchData>) => void;
+  onCancel: () => void;
+  t: (key: string) => string;
+}> = ({ batch, onSubmit, onCancel, t }) => {
+  const [formData, setFormData] = useState({
+    digesterId: batch?.digesterId || '',
+    volume: batch?.volume?.toString() || '',
+    methaneContent: batch?.methaneContent?.toString() || '',
+    notes: batch?.notes || ''
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSubmit({
+      ...formData,
+      volume: parseFloat(formData.volume),
+      methaneContent: parseFloat(formData.methaneContent)
+    });
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="space-y-2">
+        <Label htmlFor="digesterId">{t('digesterId')}</Label>
+        <Select value={formData.digesterId} onValueChange={(value) => setFormData(prev => ({ ...prev, digesterId: value }))}>
+          <SelectTrigger>
+            <SelectValue placeholder="Select digester" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="DIG-001">Digester 001</SelectItem>
+            <SelectItem value="DIG-002">Digester 002</SelectItem>
+            <SelectItem value="DIG-003">Digester 003</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="volume">{t('volume')}</Label>
+          <Input
+            id="volume"
+            type="number"
+            step="0.1"
+            value={formData.volume}
+            onChange={(e) => setFormData(prev => ({ ...prev, volume: e.target.value }))}
+            placeholder="0.0"
+            required
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="methaneContent">{t('methaneContent')}</Label>
+          <Input
+            id="methaneContent"
+            type="number"
+            step="0.1"
+            value={formData.methaneContent}
+            onChange={(e) => setFormData(prev => ({ ...prev, methaneContent: e.target.value }))}
+            placeholder="0.0"
+            required
+          />
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="notes">{t('notes')}</Label>
+        <Textarea
+          id="notes"
+          value={formData.notes}
+          onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+          placeholder="Additional notes about the batch..."
+          rows={3}
+        />
+      </div>
+
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={onCancel}>
+          {t('cancel')}
+        </Button>
+        <Button type="submit">
+          {batch ? t('update') : t('create')}
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+};
+
+export const BatchManagement: React.FC<BatchManagementProps> = ({ languageContext }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<BatchStatus | 'all'>('all');
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [editingBatch, setEditingBatch] = useState<BatchData | null>(null);
+  const [deletingBatch, setDeletingBatch] = useState<BatchData | null>(null);
+
+  const lang = languageContext?.language || 'en';
+  const t = (key: string): string => {
+    return languageContext?.t(key) || translations[lang][key as keyof typeof translations[typeof lang]] || key;
+  };
+
+  const filteredBatches = batches.filter(batch => {
+    const matchesSearch = batch.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         batch.digesterId.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesStatus = statusFilter === 'all' || batch.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
+  const handleCreateBatch = async (data: Partial<BatchData>) => {
+    await createBatch(data);
+    setIsCreateDialogOpen(false);
+  };
+
+  const handleUpdateBatch = async (data: Partial<BatchData>) => {
+    if (editingBatch) {
+      await updateBatch(editingBatch.id, data);
+      setEditingBatch(null);
+    }
+  };
+
+  const handleDeleteBatch = async () => {
+    if (deletingBatch) {
+      await deleteBatch(deletingBatch.id);
+      setDeletingBatch(null);
+    }
+  };
+
+  const activeBatches = batches.filter(b => b.status === 'processing' || b.status === 'testing');
+  const readyBatches = batches.filter(b => b.status === 'ready');
+  const transferredBatches = batches.filter(b => b.status === 'transferred');
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">{t('title')}</h1>
+          <p className="text-muted-foreground">{t('subtitle')}</p>
+        </div>
+        <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+          <DialogTrigger asChild>
+            <Button className="gap-2">
+              <Plus className="w-4 h-4" />
+              {t('createBatch')}
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle>{t('createBatch')}</DialogTitle>
+              <DialogDescription>
+                Create a new biogas batch from digester output
+              </DialogDescription>
+            </DialogHeader>
+            <BatchForm
+              onSubmit={handleCreateBatch}
+              onCancel={() => setIsCreateDialogOpen(false)}
+              t={t}
+            />
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      {/* Statistics Cards */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Active Batches</CardTitle>
+            <Package className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{activeBatches.length}</div>
+            <p className="text-xs text-muted-foreground">
+              Currently processing
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Ready for Transfer</CardTitle>
+            <CheckCircle className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{readyBatches.length}</div>
+            <p className="text-xs text-muted-foreground">
+              Quality approved
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Transferred Today</CardTitle>
+            <Truck className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {transferredBatches.filter(b =>
+                new Date(b.transferDate || '').toDateString() === new Date().toDateString()
+              ).length}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {transferredBatches.reduce((sum, b) => sum + b.volume, 0).toFixed(1)} m³ total
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Quality Certificates</CardTitle>
+            <FileText className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{certificates.length}</div>
+            <p className="text-xs text-muted-foreground">
+              Available for download
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Main Content */}
+      <Tabs defaultValue="batches" className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="batches">{t('batchList')}</TabsTrigger>
+          <TabsTrigger value="quality">{t('activeQualities')}</TabsTrigger>
+          <TabsTrigger value="certificates">{t('certificates')}</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="batches">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>{t('batchList')}</CardTitle>
+                  <CardDescription>
+                    Manage all biogas batches and their lifecycle
+                  </CardDescription>
+                </div>
+                <div className="flex gap-2">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      placeholder={t('search')}
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-10 w-64"
+                    />
+                  </div>
+                  <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as BatchStatus | 'all')}>
+                    <SelectTrigger className="w-32">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Status</SelectItem>
+                      <SelectItem value="processing">Processing</SelectItem>
+                      <SelectItem value="testing">Testing</SelectItem>
+                      <SelectItem value="ready">Ready</SelectItem>
+                      <SelectItem value="transferred">Transferred</SelectItem>
+                      <SelectItem value="rejected">Rejected</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t('batchId')}</TableHead>
+                    <TableHead>{t('digesterId')}</TableHead>
+                    <TableHead>{t('volume')}</TableHead>
+                    <TableHead>{t('methaneContent')}</TableHead>
+                    <TableHead>{t('status')}</TableHead>
+                    <TableHead>{t('qualityScore')}</TableHead>
+                    <TableHead>{t('createdDate')}</TableHead>
+                    <TableHead>{t('actions')}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredBatches.map((batch) => (
+                    <TableRow key={batch.id}>
+                      <TableCell className="font-medium">{batch.id}</TableCell>
+                      <TableCell>{batch.digesterId}</TableCell>
+                      <TableCell>{batch.volume.toFixed(1)} m³</TableCell>
+                      <TableCell>{batch.methaneContent.toFixed(1)}%</TableCell>
+                      <TableCell>
+                        <Badge className={getStatusColor(batch.status)}>
+                          <div className="flex items-center gap-1">
+                            {getStatusIcon(batch.status)}
+                            {t(batch.status)}
+                          </div>
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {batch.qualityScore ? (
+                          <span className={`font-medium ${
+                            batch.qualityScore >= 90 ? 'text-green-600' :
+                            batch.qualityScore >= 70 ? 'text-yellow-600' :
+                            'text-red-600'
+                          }`}>
+                            {batch.qualityScore}/100
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">Pending</span>
+                        )}
+                      </TableCell>
+                      <TableCell>{new Date(batch.createdDate).toLocaleDateString()}</TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setEditingBatch(batch)}
+                          >
+                            <Edit className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setDeletingBatch(batch)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="quality">
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('activeQualities')}</CardTitle>
+              <CardDescription>
+                Monitor ongoing quality testing processes
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {batches.filter(b => b.status === 'testing').map((batch) => (
+                  <div key={batch.id} className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="space-y-1">
+                      <h4 className="font-semibold">{batch.id}</h4>
+                      <p className="text-sm text-muted-foreground">
+                        Digester: {batch.digesterId} | Volume: {batch.volume.toFixed(1)} m³
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <Badge className={getStatusColor(batch.status)}>
+                        {t('testing')}
+                      </Badge>
+                      <Button size="sm" variant="outline">
+                        View Progress
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                {batches.filter(b => b.status === 'testing').length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Package className="w-12 h-12 mx-auto mb-2" />
+                    <p>No active quality tests</p>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="certificates">
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('certificates')}</CardTitle>
+              <CardDescription>
+                Download and manage quality certificates
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {certificates.map((cert) => (
+                  <div key={cert.id} className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="space-y-1">
+                      <h4 className="font-semibold">{cert.batchId}</h4>
+                      <p className="text-sm text-muted-foreground">
+                        Issued: {new Date(cert.issuedDate).toLocaleDateString()} |
+                        Score: {cert.qualityScore}/100
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <Badge className="bg-green-100 text-green-800">
+                        Certified
+                      </Badge>
+                      <Button size="sm" variant="outline">
+                        <Download className="w-4 h-4 mr-2" />
+                        Download
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                {certificates.length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <FileText className="w-12 h-12 mx-auto mb-2" />
+                    <p>No certificates available</p>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      {/* Edit Dialog */}
+      <Dialog open={!!editingBatch} onOpenChange={() => setEditingBatch(null)}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>{t('editBatch')}</DialogTitle>
+            <DialogDescription>
+              Update batch information and status
+            </DialogDescription>
+          </DialogHeader>
+          {editingBatch && (
+            <BatchForm
+              batch={editingBatch}
+              onSubmit={handleUpdateBatch}
+              onCancel={() => setEditingBatch(null)}
+              t={t}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Dialog */}
+      <Dialog open={!!deletingBatch} onOpenChange={() => setDeletingBatch(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('deleteBatch')}</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete batch {deletingBatch?.id}? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeletingBatch(null)}>
+              {t('cancel')}
+            </Button>
+            <Button variant="destructive" onClick={handleDeleteBatch}>
+              {t('delete')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+};
+
+export default BatchManagement;
