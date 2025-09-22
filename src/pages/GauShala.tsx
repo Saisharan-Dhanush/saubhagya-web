@@ -13,9 +13,7 @@ import GauShalaHome from './gaushala/GauShalaHome';
 import CattleManagement from './gaushala/CattleManagement';
 import AddCattle from './gaushala/AddCattle';
 import CattleDetail from './gaushala/CattleDetail';
-import TransactionHistory from './gaushala/TransactionHistory';
 import AllTransactions from './gaushala/AllTransactions';
-import CreateDungTransaction from './gaushala/CreateDungTransaction';
 
 // Language Context
 interface LanguageContextType {
@@ -80,7 +78,6 @@ export default function GauShala() {
     if (path.includes('/cattle/') && path.split('/').length > 3) return 'cattleDetails';
     if (path.includes('/cattle')) return 'cattle';
     if (path.includes('/all-transactions')) return 'allTransactions';
-    if (path.includes('/transactions')) return 'transactions';
     return 'home';
   };
 
@@ -98,13 +95,6 @@ export default function GauShala() {
         updateBreadcrumbs([
           { label: t('title'), url: '/gaushala', module: 'gaushala' },
           { label: t('cattle'), url: '/gaushala/cattle', module: 'gaushala' }
-        ]);
-        break;
-      case 'transactions':
-        navigate('/gaushala/transactions');
-        updateBreadcrumbs([
-          { label: t('title'), url: '/gaushala', module: 'gaushala' },
-          { label: t('transactions'), url: '/gaushala/transactions', module: 'gaushala' }
         ]);
         break;
       case 'allTransactions':
@@ -145,15 +135,10 @@ export default function GauShala() {
           { label: 'Cattle Management', onClick: () => navigate('/gaushala/cattle') },
           { label: 'Cattle Details' }
         ];
-      case 'transactions':
-        return [
-          { label: 'Gausakhi', onClick: () => navigate('/gaushala') },
-          { label: 'Transaction History' }
-        ];
       case 'allTransactions':
         return [
           { label: 'Gausakhi', onClick: () => navigate('/gaushala') },
-          { label: 'Field Worker Transactions' }
+          { label: 'Transaction History' }
         ];
       default:
         return [{ label: 'Gausakhi' }];
@@ -177,16 +162,9 @@ export default function GauShala() {
       isActive: activeTab === 'cattle' || activeTab === 'addCattle' || activeTab === 'cattleDetails'
     },
     {
-      id: 'transactions',
+      id: 'allTransactions',
       label: 'Transaction History',
       icon: <Receipt className="w-4 h-4" />,
-      onClick: () => setActiveTab('transactions'),
-      isActive: activeTab === 'transactions'
-    },
-    {
-      id: 'allTransactions',
-      label: 'All Field Worker Transactions',
-      icon: <Users className="w-4 h-4" />,
       onClick: () => setActiveTab('allTransactions'),
       isActive: activeTab === 'allTransactions'
     }
@@ -222,12 +200,6 @@ export default function GauShala() {
           { label: t('cattleDetails'), url: location.pathname, module: 'gaushala' }
         ]);
         break;
-      case 'transactions':
-        updateBreadcrumbs([
-          { label: t('title'), url: '/gaushala', module: 'gaushala' },
-          { label: t('transactions'), url: '/gaushala/transactions', module: 'gaushala' }
-        ]);
-        break;
       case 'allTransactions':
         updateBreadcrumbs([
           { label: t('title'), url: '/gaushala', module: 'gaushala' },
@@ -253,8 +225,6 @@ export default function GauShala() {
         <Route path="/cattle" element={<CattleManagement languageContext={languageContext} />} />
         <Route path="/cattle/add" element={<AddCattle languageContext={languageContext} />} />
         <Route path="/cattle/:id" element={<CattleDetail languageContext={languageContext} />} />
-        <Route path="/transactions" element={<TransactionHistory languageContext={languageContext} />} />
-        <Route path="/transactions/create" element={<CreateDungTransaction languageContext={languageContext} />} />
         <Route path="/all-transactions" element={<AllTransactions />} />
       </Routes>
     </BaseLayout>

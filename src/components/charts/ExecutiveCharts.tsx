@@ -1,11 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import {
-  LineChart,
   Line,
-  AreaChart,
-  Area,
-  BarChart,
-  Bar,
   PieChart,
   Pie,
   Cell,
@@ -15,13 +10,13 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
-  RadialBarChart,
-  RadialBar,
   ComposedChart,
-  ScatterChart,
-  Scatter
+  AreaChart,
+  Area,
+  BarChart,
+  Bar
 } from 'recharts';
-import { TrendingUp, BarChart3, PieChart as PieChartIcon, Activity, Zap } from 'lucide-react';
+import { BarChart3 } from 'lucide-react';
 
 interface ExecutiveChartsProps {
   data?: any;
@@ -50,15 +45,15 @@ const CHART_COLORS = [
 ];
 
 export default function ExecutiveCharts({
-  data,
+  data: _data,
   type,
   language = 'en',
   timeframe = '30d',
   showLegend = true,
   showGrid = true,
-  animated = true
+  animated: _animated = true
 }: ExecutiveChartsProps) {
-  const [activeDataKey, setActiveDataKey] = useState<string | null>(null);
+  const [activeDataKey] = useState<string | null>(null);
 
   // Translations
   const t = {
@@ -337,7 +332,7 @@ export default function ExecutiveCharts({
                 name={translations.target}
               />
 
-              {chartData.some(d => d.projected) && (
+              {chartData.some(d => d && typeof d === 'object' && 'projected' in d && d.projected) && (
                 <Line
                   type="monotone"
                   dataKey="projected"
@@ -411,7 +406,7 @@ export default function ExecutiveCharts({
                 ))}
               </Pie>
               <Tooltip
-                formatter={(value: any, name: any) => [`${value}%`, translations.marketShare]}
+                formatter={(value: any, _name: any) => [`${value}%`, translations.marketShare]}
                 labelFormatter={(label: any) => `${label}`}
               />
               {showLegend && <Legend />}
@@ -495,7 +490,7 @@ export default function ExecutiveCharts({
                 name="Price per Ton"
               />
 
-              {chartData.some(d => d.forecast) && (
+              {chartData.some(d => d && typeof d === 'object' && 'forecast' in d && d.forecast) && (
                 <Line
                   yAxisId="credits"
                   type="monotone"

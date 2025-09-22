@@ -240,10 +240,10 @@ class AuditLogger {
         filteredEvents = filteredEvents.filter(e => e.userRole === filter.userRole)
       }
       if (filter.action) {
-        filteredEvents = filteredEvents.filter(e => e.action.includes(filter.action))
+        filteredEvents = filteredEvents.filter(e => e.action.includes(filter.action!))
       }
       if (filter.resource) {
-        filteredEvents = filteredEvents.filter(e => e.resource.includes(filter.resource))
+        filteredEvents = filteredEvents.filter(e => e.resource.includes(filter.resource!))
       }
       if (filter.category) {
         filteredEvents = filteredEvents.filter(e => e.category === filter.category)

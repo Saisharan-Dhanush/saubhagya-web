@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
@@ -7,7 +7,6 @@ import {
   Factory,
   Gauge,
   Thermometer,
-  Timer,
   Users,
   Weight,
   Zap,
@@ -51,7 +50,7 @@ const BiogasSanghDashboard: React.FC<DashboardProps> = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const { platformSettings, updateBreadcrumbs } = usePlatform();
+  const { updateBreadcrumbs } = usePlatform();
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
   // Mock data for demonstration

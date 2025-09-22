@@ -147,7 +147,8 @@ export const useScreenReader = () => {
       announceDiv.style.height = '1px'
       announceDiv.style.overflow = 'hidden'
       document.body.appendChild(announceDiv)
-      announceRef.current = announceDiv
+      const newRef = announceRef as React.MutableRefObject<HTMLElement>
+      newRef.current = announceDiv
     }
   }, [])
 
@@ -381,7 +382,7 @@ export const AccessibleButton: React.FC<AccessibleButtonProps> = ({
 
   return (
     <button
-      ref={ref}
+      ref={ref as React.LegacyRef<HTMLButtonElement>}
       className={`${baseClasses} ${variantClasses[variant]} ${sizeClasses[size]} ${focusVisibleClasses} ${className}`}
       disabled={disabled || loading}
       aria-busy={loading}

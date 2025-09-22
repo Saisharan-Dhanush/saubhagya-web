@@ -67,10 +67,7 @@ export default defineConfig({
           'date-utils': ['moment', 'date-fns'],
 
           // Form and utility libraries
-          'utils': ['class-variance-authority', 'clsx', 'tailwind-merge', 'zustand', 'react-hook-form'],
-
-          // Firebase
-          'firebase': ['firebase']
+          'utils': ['class-variance-authority', 'clsx', 'tailwind-merge', 'zustand', 'react-hook-form']
         },
 
         // Optimize chunk naming for better caching

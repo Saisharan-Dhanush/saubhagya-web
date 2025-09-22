@@ -114,6 +114,31 @@ export interface VoiceQuery {
   language: 'en' | 'hi';
 }
 
+export interface PredictiveAnalytics {
+  insights: PredictiveInsight[];
+  forecasts: any[];
+  trends: any[];
+}
+
+export interface CompetitiveIntelligence {
+  competitiveData: CompetitiveData;
+  benchmarks: any[];
+  threats: string[];
+  opportunities: string[];
+}
+
+export interface StrategicPlanning {
+  initiatives: StrategicInitiative[];
+  roadmap: any[];
+  milestones: any[];
+}
+
+export interface ExecutiveAlerts {
+  critical: PredictiveInsight[];
+  warnings: PredictiveInsight[];
+  opportunities: PredictiveInsight[];
+}
+
 interface ExecutiveAnalyticsContextType {
   // Data states
   kpis: ExecutiveKPI[];

@@ -1,16 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Row, Col, Statistic, Progress, Table, Tooltip, Space, Select, DatePicker } from 'antd';
-import { 
-  LineChart, Line, AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
+import {
+  LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, ResponsiveContainer, Legend
 } from 'recharts';
-import { 
-  TrophyOutlined, FireOutlined, DollarOutlined, TeamOutlined,
-  LeafOutlined, ThunderboltOutlined, SafetyOutlined, GlobalOutlined
+import {
+  TrophyOutlined, FireOutlined, TeamOutlined,
+  ThunderboltOutlined, GlobalOutlined
 } from '@ant-design/icons';
 import moment from 'moment';
 
-const { RangePicker } = DatePicker;
 const { Option } = Select;
 
 interface KPIData {
@@ -60,10 +59,10 @@ interface KPIData {
 
 const BiogasKPIDashboard: React.FC = () => {
   const [kpiData, setKpiData] = useState<KPIData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
   const [timeRange, setTimeRange] = useState('7d');
   const [selectedFarmerCluster, setSelectedFarmerCluster] = useState('all');
-  const [dateRange, setDateRange] = useState<[moment.Moment, moment.Moment]>([
+  const [dateRange] = useState<[moment.Moment, moment.Moment]>([
     moment().subtract(7, 'days'),
     moment()
   ]);
@@ -323,7 +322,7 @@ const BiogasKPIDashboard: React.FC = () => {
               value={kpiData.co2Reduced}
               suffix="टन"
               valueStyle={{ color: '#52c41a', fontSize: '24px' }}
-              prefix={<LeafOutlined />}
+              prefix={<GlobalOutlined />}
             />
           </Card>
         </Col>
@@ -371,13 +370,7 @@ const BiogasKPIDashboard: React.FC = () => {
                   tickFormatter={(value) => moment(value).format('DD/MM')}
                 />
                 <YAxis />
-                <Tooltip 
-                  labelFormatter={(value) => moment(value).format('DD MMMM YYYY')}
-                  formatter={(value: number, name: string) => [
-                    `${value} ${name === 'volume' ? 'm³' : '%'}`,
-                    name === 'volume' ? 'उत्पादन' : 'दक्षता'
-                  ]}
-                />
+                <Tooltip />
                 <Legend />
                 <Line 
                   type="monotone" 
@@ -413,9 +406,7 @@ const BiogasKPIDashboard: React.FC = () => {
                     <Cell key={`cell-${index}`} fill={entry.color} />
                   ))}
                 </Pie>
-                <Tooltip 
-                  formatter={(value: number) => [`₹${value.toLocaleString('hi-IN')}`, 'राशि']}
-                />
+                <Tooltip />
               </PieChart>
             </ResponsiveContainer>
           </Card>

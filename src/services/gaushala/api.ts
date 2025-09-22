@@ -3,7 +3,7 @@
  * Handles all API calls for cattle management, transactions, and dashboard data
  */
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8080';
 
 export interface ApiResponse<T> {
   success: boolean;
@@ -175,7 +175,10 @@ export const cattleApi = {
   async getCattleById(id: string): Promise<ApiResponse<Cattle>> {
     const allCattleResponse = await this.getAllCattle();
     if (!allCattleResponse.success || !allCattleResponse.data) {
-      return allCattleResponse as ApiResponse<Cattle>;
+      return {
+        success: false,
+        error: allCattleResponse.error || 'Failed to fetch cattle data'
+      };
     }
 
     const cattle = allCattleResponse.data.find(c => c.id === id);
@@ -294,7 +297,12 @@ export const cattleApi = {
   },
 
   async updateHealth(cattleId: string, health: Cattle['health'], notes?: string): Promise<ApiResponse<Cattle>> {
-    return this.updateCattle(cattleId, { health });
+    const updateData: Partial<Cattle> = { health };
+    if (notes) {
+      // Notes can be used for logging or future implementation
+      console.log(`Health update notes for ${cattleId}: ${notes}`);
+    }
+    return this.updateCattle(cattleId, updateData);
   },
 
   async addMedicalRecord(cattleId: string, record: Omit<MedicalRecord, 'id'>): Promise<ApiResponse<MedicalRecord>> {
