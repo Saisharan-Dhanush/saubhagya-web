@@ -449,8 +449,8 @@ export default function GauShalaHome({ languageContext }: Props) {
     <div className="px-4 py-3 space-y-3 bg-gray-50 min-h-full">
       {/* Page Header */}
       <div className="mb-1">
-        <h1 className="text-base font-bold text-gray-900">Dashboard Overview</h1>
-        <p className="text-xs text-gray-600">Monitor your cattle management and collection metrics</p>
+        <h1 className="text-2xl font-bold text-gray-900">Dashboard Overview</h1>
+        <p className="text-sm text-gray-600">Monitor your cattle management and collection metrics</p>
       </div>
 
       {/* Statistics Cards */}

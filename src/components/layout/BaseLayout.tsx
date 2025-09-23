@@ -245,7 +245,7 @@ export default function BaseLayout({
 
         {/* Breadcrumbs */}
         {breadcrumbs && breadcrumbs.length > 0 && (
-          <div className="fixed top-16 left-0 right-0 xl:left-56 h-12 bg-gray-50 border-b border-gray-200 z-30 flex items-center">
+          <div className="fixed top-16 left-0 right-0 xl:left-56 h-12 bg-gray-50 border-b border-gray-200 z-30 flex items-center px-6">
             <nav className="flex items-center space-x-2 text-sm text-gray-600">
               {breadcrumbs.map((item, index) => (
                 <div key={index} className="flex items-center">
