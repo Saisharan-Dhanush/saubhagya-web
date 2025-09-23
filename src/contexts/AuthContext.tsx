@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
 
-export type UserRole = 'field_worker' | 'cluster_manager' | 'cbg_sales' | 'business_dev' | 'admin' | 'senior_leader' | 'purification_operator'
+export type UserRole = 'field_worker' | 'cluster_manager' | 'cbg_sales' | 'business_dev' | 'admin' | 'senior_leader' | 'purification_operator' | 'transporter'
 
 export interface Permission {
   module: string
@@ -71,6 +71,13 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     { module: 'flow_rate', actions: ['monitor', 'adjust'] },
     { module: 'maintenance', actions: ['schedule', 'track'] },
     { module: 'voice_alerts', actions: ['receive', 'respond'] }
+  ],
+  transporter: [
+    { module: 'vehicle_management', actions: ['manage', 'track'] },
+    { module: 'route_optimization', actions: ['optimize', 'plan'] },
+    { module: 'delivery_tracking', actions: ['track', 'update'] },
+    { module: 'schedule_management', actions: ['schedule', 'modify'] },
+    { module: 'logistics', actions: ['coordinate', 'monitor'] }
   ]
 }
 
@@ -253,18 +260,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         permissions: ROLE_PERMISSIONS.admin,
         lastAccess: new Date()
       },
-      '+914321098765': {
-        id: 'sl-001',
-        phone: '+914321098765',
-        email: 'seniorleader@saubhagya.com',
-        name: 'Dr. Rajesh Kumar (CEO)',
-        role: 'senior_leader',
-        department: 'Executive Leadership',
-        appType: 'urjaneta',
-        executiveLevel: 'ceo',
-        permissions: ROLE_PERMISSIONS.senior_leader,
-        lastAccess: new Date()
-      },
+      // '+914321098765': {
+      //   id: 'sl-001',
+      //   phone: '+914321098765',
+      //   email: 'seniorleader@saubhagya.com',
+      //   name: 'Dr. Rajesh Kumar (CEO)',
+      //   role: 'senior_leader',
+      //   department: 'Executive Leadership',
+      //   appType: 'urjaneta',
+      //   executiveLevel: 'ceo',
+      //   permissions: ROLE_PERMISSIONS.senior_leader,
+      //   lastAccess: new Date()
+      // },
       '+913210987654': {
         id: 'po-001',
         phone: '+913210987654',
@@ -274,6 +281,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         department: 'Purification Operations',
         appType: 'shuddhidoot',
         permissions: ROLE_PERMISSIONS.purification_operator,
+        lastAccess: new Date()
+      },
+      '+912109876543': {
+        id: 't-001',
+        phone: '+912109876543',
+        email: 'transporter@saubhagya.com',
+        name: 'Ravi Sharma (Transporter)',
+        role: 'transporter',
+        department: 'Logistics & Transport',
+        appType: 'admin', // Using admin app type as transport module is integrated there
+        permissions: ROLE_PERMISSIONS.transporter,
         lastAccess: new Date()
       }
     }
@@ -571,10 +589,9 @@ function getCorrectRoleForPhone(phone: string): UserRole | null {
     '+919876543210': 'field_worker',
     '+918765432109': 'cluster_manager',
     '+917654321098': 'cbg_sales',
-    '+916543210987': 'business_dev',
     '+915432109876': 'admin',
-    '+914321098765': 'senior_leader',
-    '+913210987654': 'purification_operator'
+    '+913210987654': 'purification_operator',
+    '+912109876543': 'transporter'
   }
   return phoneRoleMap[phone] || null
 }
@@ -584,10 +601,9 @@ function getCorrectAppTypeForPhone(phone: string): User['appType'] | null {
     '+919876543210': 'gausakhi',
     '+918765432109': 'biogassangh',
     '+917654321098': 'urjavyapar',
-    '+916543210987': 'urjasanyojak',
     '+915432109876': 'admin',
-    '+914321098765': 'urjaneta',
-    '+913210987654': 'shuddhidoot'
+    '+913210987654': 'shuddhidoot',
+    '+912109876543': 'admin'
   }
   return phoneAppTypeMap[phone] || null
 }
@@ -597,10 +613,9 @@ function getCorrectNameForPhone(phone: string): string | null {
     '+919876543210': 'Ramesh Kumar (Field Worker)',
     '+918765432109': 'Suresh Patel (Cluster Manager)',
     '+917654321098': 'Priya Sharma (CBG Sales Executive)',
-    '+916543210987': 'Amit Singh (Business Development)',
     '+915432109876': 'System Administrator',
-    '+914321098765': 'Dr. Rajesh Kumar (CEO)',
-    '+913210987654': 'Vinod Yadav (Purification Operator)'
+    '+913210987654': 'Vinod Yadav (Purification Operator)',
+    '+912109876543': 'Ravi Sharma (Transporter)'
   }
   return phoneNameMap[phone] || null
 }

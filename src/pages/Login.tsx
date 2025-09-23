@@ -137,9 +137,7 @@ export default function Login() {
             <p><strong>Field Worker:</strong> +919876543210</p>
             <p><strong>Cluster Mgr:</strong> +918765432109</p>
             <p><strong>CBG Sales:</strong> +917654321098</p>
-            <p><strong>Business Dev:</strong> +916543210987</p>
             <p><strong>Admin:</strong> +915432109876</p>
-            <p><strong>CEO:</strong> +914321098765</p>
             <p><strong>Purification:</strong> +913210987654</p>
             <p><strong>Transport:</strong> +912109876543</p>
             <p><em>Password for all: password123</em></p>
