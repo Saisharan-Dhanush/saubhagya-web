@@ -31,7 +31,7 @@ import {
   Crown,
   Users,
   Receipt,
-  Beef
+  Users
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { usePlatform } from '../../contexts/PlatformContext'
@@ -221,7 +221,7 @@ export const UnifiedNavigation: React.FC<UnifiedNavigationProps> = ({
     {
       id: 'cattle',
       label: platformSettings.language === 'hi' ? 'पशु प्रबंधन' : 'Cattle Management',
-      icon: Beef,
+      icon: Users,
       path: '/gaushala/cattle'
     },
     {

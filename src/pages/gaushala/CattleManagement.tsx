@@ -22,7 +22,7 @@ import {
   X,
   Save,
   Scan,
-  Beef,
+  Circle,
   Scale,
   History
 } from 'lucide-react';
@@ -593,7 +593,7 @@ export default function CattleManagement({ languageContext }: Props) {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
-                        <Beef className="h-5 w-5 text-blue-600" />
+                        <span className="text-2xl">🐄</span>
                       </div>
                       <div className="ml-3">
                         <div className="text-sm font-medium text-gray-900">{cattle.name}</div>
@@ -666,7 +666,7 @@ export default function CattleManagement({ languageContext }: Props) {
 
         {filteredCattle.length === 0 && (
           <div className="text-center py-12">
-            <Beef className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+            <span className="text-6xl mx-auto mb-4 block">🐄</span>
             <p className="text-gray-500 text-lg">No cattle found matching your filters</p>
           </div>
         )}

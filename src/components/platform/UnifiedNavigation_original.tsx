@@ -31,7 +31,7 @@ import {
   Crown,
   Users,
   Receipt,
-  Beef
+  Heart
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { usePlatform } from '../../contexts/PlatformContext'
@@ -154,7 +154,7 @@ export const UnifiedNavigation: React.FC<UnifiedNavigationProps> = ({
 
   const gauShalaTabs = [
     { id: 'dashboard', label: platformSettings.language === 'hi' ? 'डैशबोर्ड' : 'Dashboard', icon: Home },
-    { id: 'cattle', label: platformSettings.language === 'hi' ? 'पशु प्रबंधन' : 'Cattle Management', icon: Beef },
+    { id: 'cattle', label: platformSettings.language === 'hi' ? 'पशु प्रबंधन' : 'Cattle Management', icon: Users },
     { id: 'transactions', label: platformSettings.language === 'hi' ? 'लेन-देन का इतिहास' : 'Transaction History', icon: Receipt }
   ]
 

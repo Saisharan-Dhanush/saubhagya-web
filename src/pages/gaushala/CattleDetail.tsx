@@ -5,7 +5,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  Beef,
   Edit,
   Save,
   ArrowLeft,
@@ -341,7 +340,7 @@ export default function CattleDetail({ languageContext }: CattleDetailProps) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="flex items-center justify-center w-12 h-12 bg-blue-100 rounded-xl">
-                <Beef className="h-6 w-6 text-blue-600" />
+                <span className="text-3xl">🐄</span>
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-gray-900">
@@ -413,7 +412,7 @@ export default function CattleDetail({ languageContext }: CattleDetailProps) {
             {/* Basic Information */}
             <div className="bg-white rounded-xl p-6 shadow-sm">
               <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                <Beef className="h-5 w-5 text-blue-600" />
+                <span className="text-2xl">🐄</span>
                 {translations[languageContext.language].basicInfo}
               </h2>
 
@@ -571,7 +570,7 @@ export default function CattleDetail({ languageContext }: CattleDetailProps) {
             <div className="bg-white rounded-xl p-6 shadow-sm">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                  <Heart className="h-5 w-5 text-blue-600" />
+                  <span className="text-2xl">🐄</span>
                   {translations[languageContext.language].medicalHistory}
                 </h2>
                 <button
@@ -628,7 +627,7 @@ export default function CattleDetail({ languageContext }: CattleDetailProps) {
                   />
                 ) : (
                   <div className="w-full h-48 bg-gray-100 rounded-lg flex items-center justify-center mb-4">
-                    <Beef className="h-12 w-12 text-gray-400" />
+                    <span className="text-6xl">🐄</span>
                   </div>
                 )}
 

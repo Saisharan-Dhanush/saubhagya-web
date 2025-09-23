@@ -21,7 +21,7 @@ import {
   Eye,
   Trash2,
   MoreHorizontal,
-  Beef,
+  Heart,
   Truck,
   X,
   Save
@@ -464,7 +464,7 @@ export default function GauShalaHome({ languageContext }: Props) {
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-sm font-medium text-blue-700">{t('totalCows')}</p>
                   <div className="p-2 bg-blue-50 rounded-lg">
-                    <Beef className="h-5 w-5 text-blue-600" />
+                    <span className="text-2xl">🐄</span>
                   </div>
                 </div>
                 <p className="text-3xl font-bold text-gray-900 mb-3">{stats.totalCows}</p>

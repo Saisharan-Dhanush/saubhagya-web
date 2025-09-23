@@ -4,7 +4,7 @@
 
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Beef, Scan, Save, ArrowLeft, Upload, MapPin, Calendar } from 'lucide-react';
+import { Heart, Scan, Save, ArrowLeft, Upload, MapPin, Calendar } from 'lucide-react';
 import { gauShalaApi } from '../../services/gaushala/api';
 
 interface LanguageContextType {
@@ -318,7 +318,7 @@ export default function AddCattle({ languageContext }: AddCattleProps) {
 
           <div className="flex items-center gap-3">
             <div className="flex items-center justify-center w-12 h-12 bg-blue-100 rounded-xl">
-              <Beef className="h-6 w-6 text-blue-600" />
+              <span className="text-3xl">🐄</span>
             </div>
             <div>
               <h1 className="text-2xl font-bold text-gray-900">
@@ -347,7 +347,7 @@ export default function AddCattle({ languageContext }: AddCattleProps) {
           {/* Basic Information */}
           <div className="bg-white rounded-xl p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <Beef className="h-5 w-5 text-blue-600" />
+              <span className="text-2xl">🐄</span>
               {translations[languageContext.language].basicInfo}
             </h2>
 
