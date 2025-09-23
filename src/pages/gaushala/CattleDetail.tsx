@@ -15,7 +15,13 @@ import {
   FileText,
   Camera,
   Trash2,
-  AlertTriangle
+  AlertTriangle,
+  User,
+  Home,
+  Ruler,
+  Baby,
+  Globe,
+  Settings
 } from 'lucide-react';
 import { gauShalaApi, Cattle, MedicalRecord } from '../../services/gaushala/api';
 

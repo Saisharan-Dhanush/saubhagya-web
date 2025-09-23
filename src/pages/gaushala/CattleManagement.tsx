@@ -24,7 +24,10 @@ import {
   Scan,
   Circle,
   Scale,
-  History
+  History,
+  Clock,
+  LogIn,
+  LogOut
 } from 'lucide-react';
 import { gauShalaApi } from '../../services/gaushala/api';
 import { useNavigate } from 'react-router-dom';
@@ -71,6 +74,28 @@ interface MedicalRecord {
   veterinarian: string;
   medication?: string;
   nextCheckup?: number;
+}
+
+interface AttendanceLog {
+  id: string;
+  cattleId: string;
+  timestamp: number;
+  type: 'IN' | 'OUT';
+  location?: string;
+  rfidScanned?: boolean;
+}
+
+interface DailyAttendance {
+  date: string;
+  firstIn?: AttendanceLog;
+  lastOut?: AttendanceLog;
+  totalLogs: AttendanceLog[];
+}
+
+interface AttendanceHistory {
+  cattleId: string;
+  days: DailyAttendance[];
+  selectedDate: string;
 }
 
 interface CattleFilter {
@@ -141,7 +166,28 @@ const translations = {
     deleteCattle: 'Delete Cattle',
     confirmDelete: 'Are you sure you want to delete this cattle record?',
     yes: 'Yes',
-    no: 'No'
+    no: 'No',
+    attendance: 'Attendance',
+    viewAttendance: 'View Attendance',
+    attendanceLogs: 'Attendance Logs',
+    dailyAttendance: 'Daily Attendance',
+    firstIn: 'First In',
+    lastOut: 'Last Out',
+    totalEntries: 'Total Entries',
+    viewLogs: 'View Logs',
+    timeIn: 'Time In',
+    timeOut: 'Time Out',
+    noAttendanceData: 'No attendance data available',
+    today: 'Today',
+    close: 'Close',
+    selectDate: 'Select Date',
+    last7Days: 'Last 7 Days',
+    last30Days: 'Last 30 Days',
+    attendanceHistory: 'Attendance History',
+    noDataForDate: 'No attendance data for this date',
+    present: 'Present',
+    absent: 'Absent',
+    dayView: 'Day View'
   },
   hi: {
     title: 'पशु प्रबंधन',
@@ -195,7 +241,28 @@ const translations = {
     deleteCattle: 'पशु हटाएं',
     confirmDelete: 'क्या आप वाकई इस पशु रिकॉर्ड को हटाना चाहते हैं?',
     yes: 'हाँ',
-    no: 'नहीं'
+    no: 'नहीं',
+    attendance: 'उपस्थिति',
+    viewAttendance: 'उपस्थिति देखें',
+    attendanceLogs: 'उपस्थिति लॉग',
+    dailyAttendance: 'दैनिक उपस्थिति',
+    firstIn: 'पहली प्रविष्टि',
+    lastOut: 'अंतिम निकास',
+    totalEntries: 'कुल प्रविष्टियां',
+    viewLogs: 'लॉग देखें',
+    timeIn: 'प्रवेश समय',
+    timeOut: 'निकास समय',
+    noAttendanceData: 'कोई उपस्थिति डेटा उपलब्ध नहीं',
+    today: 'आज',
+    close: 'बंद करें',
+    selectDate: 'तारीख चुनें',
+    last7Days: 'पिछले 7 दिन',
+    last30Days: 'पिछले 30 दिन',
+    attendanceHistory: 'उपस्थिति इतिहास',
+    noDataForDate: 'इस तारीख के लिए कोई उपस्थिति डेटा नहीं',
+    present: 'उपस्थित',
+    absent: 'अनुपस्थित',
+    dayView: 'दिन दृश्य'
   }
 };
 
@@ -213,7 +280,15 @@ export default function CattleManagement({ languageContext }: Props) {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showTransactionModal, setShowTransactionModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [showAttendanceModal, setShowAttendanceModal] = useState(false);
+  const [showAttendanceLogsModal, setShowAttendanceLogsModal] = useState(false);
   const [selectedCattle, setSelectedCattle] = useState<Cattle | null>(null);
+  const [attendanceHistory, setAttendanceHistory] = useState<AttendanceHistory | null>(null);
+  const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [attendanceLogs, setAttendanceLogs] = useState<AttendanceLog[]>([]);
+  const [logsCurrentPage, setLogsCurrentPage] = useState(1);
+  const [logsSearchTerm, setLogsSearchTerm] = useState('');
+  const logsPerPage = 8;
   const [editFormData, setEditFormData] = useState<any>({});
   const [isUpdating, setIsUpdating] = useState(false);
   const [filter, setFilter] = useState<CattleFilter>({
@@ -337,29 +412,11 @@ export default function CattleManagement({ languageContext }: Props) {
   };
 
   const handleView = (cattle: Cattle) => {
-    setSelectedCattle(cattle);
-    setShowViewModal(true);
+    navigate(`/gaushala/cattle/view/${cattle.id}`);
   };
 
   const handleEdit = (cattle: Cattle) => {
-    setSelectedCattle(cattle);
-    // Initialize edit form with current cattle data
-    setEditFormData({
-      name: cattle.name,
-      rfidTag: cattle.rfidTag,
-      breed: cattle.breed.toLowerCase(), // Convert to lowercase to match breed options
-      age: (cattle.age * 12).toString(), // Convert years to months for form input
-      weight: cattle.weight.toString(),
-      health: cattle.health,
-      owner: cattle.owner,
-      ownerId: cattle.ownerId,
-      location: {
-        latitude: cattle.location.latitude.toString(),
-        longitude: cattle.location.longitude.toString(),
-        address: cattle.location.address || ''
-      }
-    });
-    setShowEditModal(true);
+    navigate(`/gaushala/cattle/edit/${cattle.id}`);
   };
 
   const handleEditInputChange = (field: string, value: string) => {
@@ -469,6 +526,147 @@ export default function CattleManagement({ languageContext }: Props) {
     console.log('Transaction recorded successfully:', transaction);
   };
 
+  // Generate mock attendance data for multiple days
+  const generateMockAttendanceHistory = (cattleId: string): AttendanceHistory => {
+    const days: DailyAttendance[] = [];
+    const today = new Date();
+
+    // Generate data for last 30 days
+    for (let i = 0; i < 30; i++) {
+      const date = new Date(today);
+      date.setDate(today.getDate() - i);
+      const dateString = date.toISOString().split('T')[0];
+
+      // Random chance of attendance (85% chance of being present)
+      const isPresent = Math.random() > 0.15;
+
+      if (isPresent) {
+        const logs: AttendanceLog[] = [];
+
+        // Generate first in time (6-8 AM)
+        const firstInTime = new Date(date);
+        firstInTime.setHours(6 + Math.floor(Math.random() * 2), Math.floor(Math.random() * 60), 0, 0);
+
+        // Generate last out time (17-19 PM)
+        const lastOutTime = new Date(date);
+        lastOutTime.setHours(17 + Math.floor(Math.random() * 2), Math.floor(Math.random() * 60), 0, 0);
+
+        const firstInLog: AttendanceLog = {
+          id: `${cattleId}-in-${date.getTime()}-${i}`,
+          cattleId,
+          timestamp: firstInTime.getTime(),
+          type: 'IN',
+          location: 'Main Gate',
+          rfidScanned: true
+        };
+
+        const lastOutLog: AttendanceLog = {
+          id: `${cattleId}-out-${date.getTime()}-${i}`,
+          cattleId,
+          timestamp: lastOutTime.getTime(),
+          type: 'OUT',
+          location: 'Main Gate',
+          rfidScanned: true
+        };
+
+        // Generate intermediate logs (2-5 entries)
+        const numIntermediateLogs = 2 + Math.floor(Math.random() * 4);
+        for (let j = 0; j < numIntermediateLogs; j++) {
+          const randomTime = new Date(date);
+          randomTime.setHours(9 + j * 2, Math.floor(Math.random() * 60), 0, 0);
+
+          const locations = ['Feeding Area', 'Water Point', 'Milking Shed', 'Rest Area', 'Medical Check'];
+
+          logs.push({
+            id: `${cattleId}-${j}-${date.getTime()}-${i}`,
+            cattleId,
+            timestamp: randomTime.getTime(),
+            type: j % 2 === 0 ? 'OUT' : 'IN',
+            location: locations[j % locations.length],
+            rfidScanned: Math.random() > 0.1 // 90% RFID scan success
+          });
+        }
+
+        logs.push(firstInLog, lastOutLog);
+        logs.sort((a, b) => a.timestamp - b.timestamp);
+
+        days.push({
+          date: dateString,
+          firstIn: firstInLog,
+          lastOut: lastOutLog,
+          totalLogs: logs
+        });
+      } else {
+        // Absent day
+        days.push({
+          date: dateString,
+          firstIn: undefined,
+          lastOut: undefined,
+          totalLogs: []
+        });
+      }
+    }
+
+    return {
+      cattleId,
+      days: days.reverse(), // Most recent first
+      selectedDate: today.toISOString().split('T')[0]
+    };
+  };
+
+  const handleViewAttendance = async (cattle: Cattle) => {
+    setSelectedCattle(cattle);
+
+    // Generate mock data for multiple days - replace with actual API call
+    const historyData = generateMockAttendanceHistory(cattle.id);
+    setAttendanceHistory(historyData);
+    setSelectedDate(historyData.selectedDate);
+    setShowAttendanceModal(true);
+  };
+
+  const handleDateChange = (date: string) => {
+    setSelectedDate(date);
+  };
+
+  const handleViewAttendanceLogs = () => {
+    if (attendanceHistory && selectedDate) {
+      const dayData = attendanceHistory.days.find(day => day.date === selectedDate);
+      if (dayData) {
+        setAttendanceLogs(dayData.totalLogs);
+        setLogsCurrentPage(1);
+        setLogsSearchTerm('');
+        setShowAttendanceLogsModal(true);
+      }
+    }
+  };
+
+  const getCurrentDayAttendance = (): DailyAttendance | null => {
+    if (attendanceHistory && selectedDate) {
+      return attendanceHistory.days.find(day => day.date === selectedDate) || null;
+    }
+    return null;
+  };
+
+  const getFilteredLogs = () => {
+    if (!logsSearchTerm.trim()) return attendanceLogs;
+
+    return attendanceLogs.filter(log =>
+      log.type.toLowerCase().includes(logsSearchTerm.toLowerCase()) ||
+      log.location?.toLowerCase().includes(logsSearchTerm.toLowerCase()) ||
+      new Date(log.timestamp).toLocaleTimeString().includes(logsSearchTerm)
+    );
+  };
+
+  const getPaginatedLogs = () => {
+    const filtered = getFilteredLogs();
+    const startIndex = (logsCurrentPage - 1) * logsPerPage;
+    const endIndex = startIndex + logsPerPage;
+    return filtered.slice(startIndex, endIndex);
+  };
+
+  const getTotalPages = () => {
+    return Math.ceil(getFilteredLogs().length / logsPerPage);
+  };
 
   const handleScanRFID = async () => {
     try {
@@ -583,7 +781,6 @@ export default function CattleManagement({ languageContext }: Props) {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('weight')}</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('health')}</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('owner')}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('lastCollection')}</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('actions')}</th>
               </tr>
             </thead>
@@ -616,9 +813,6 @@ export default function CattleManagement({ languageContext }: Props) {
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{cattle.owner}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {cattle.lastDungCollection ? formatDate(cattle.lastDungCollection) : t('never')}
-                  </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex items-center space-x-2">
                       <button
@@ -636,18 +830,11 @@ export default function CattleManagement({ languageContext }: Props) {
                         <Edit className="h-4 w-4" />
                       </button>
                       <button
-                        onClick={() => handleRecordTransaction(cattle)}
-                        className="text-orange-600 hover:text-orange-900 p-1 rounded hover:bg-orange-50"
-                        title={t('recordTransaction')}
+                        onClick={() => handleViewAttendance(cattle)}
+                        className="text-indigo-600 hover:text-indigo-900 p-1 rounded hover:bg-indigo-50"
+                        title={t('viewAttendance')}
                       >
-                        <Scale className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => handleViewHistory(cattle)}
-                        className="text-purple-600 hover:text-purple-900 p-1 rounded hover:bg-purple-50"
-                        title={t('viewHistory')}
-                      >
-                        <History className="h-4 w-4" />
+                        <Clock className="h-4 w-4" />
                       </button>
                       <button
                         onClick={() => handleDelete(cattle)}
@@ -1022,6 +1209,421 @@ export default function CattleManagement({ languageContext }: Props) {
             setSelectedCattle(null);
           }}
         />
+      )}
+
+      {/* Daily Attendance Modal */}
+      {showAttendanceModal && selectedCattle && attendanceHistory && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-5xl w-full h-[85vh] flex flex-col shadow-sm border border-gray-100">
+            {/* Header */}
+            <div className="p-6 border-b border-gray-100">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-3">
+                    <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
+                      <Clock className="h-5 w-5 text-blue-600" />
+                    </div>
+                    {t('attendanceHistory')}
+                  </h2>
+                  <p className="text-gray-600 mt-1">{selectedCattle.name} - {t('last30Days')}</p>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowAttendanceModal(false);
+                    setSelectedCattle(null);
+                    setAttendanceHistory(null);
+                  }}
+                  className="text-gray-400 hover:text-gray-600 p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              {/* Date Selector */}
+              <div>
+                <h3 className="text-md font-semibold text-gray-800 mb-4 pb-2 border-b border-gray-200 flex items-center gap-2">
+                  <Calendar className="h-5 w-5 text-blue-600" />
+                  📅 {t('selectDate')}
+                </h3>
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => handleDateChange(e.target.value)}
+                  max={new Date().toISOString().split('T')[0]}
+                  min={new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]}
+                  className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg transition-all duration-200 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent hover:border-gray-400"
+                />
+              </div>
+
+              {(() => {
+                const currentDay = getCurrentDayAttendance();
+                if (!currentDay || currentDay.totalLogs.length === 0) {
+                  return (
+                    <div className="text-center py-12">
+                      <div className="h-16 w-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <span className="text-2xl">📅</span>
+                      </div>
+                      <h3 className="text-lg font-semibold text-gray-800 mb-2">{t('noDataForDate')}</h3>
+                      <p className="text-gray-600 mb-4">{selectedDate === new Date().toISOString().split('T')[0] ? t('today') : new Date(selectedDate).toLocaleDateString()}</p>
+                      <div className="inline-flex items-center px-3 py-1 bg-red-100 text-red-800 text-sm font-medium rounded-full">
+                        {t('absent')}
+                      </div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <>
+                    {/* Quick Stats for Selected Date */}
+                    <div>
+                      <h3 className="text-md font-semibold text-gray-800 mb-3 pb-2 border-b border-gray-200 flex items-center gap-2">
+                        <Activity className="h-5 w-5 text-blue-600" />
+                        📊 {t('dayView')}
+                      </h3>
+                      <div className="grid grid-cols-3 gap-4">
+                        <div className="text-center p-3 bg-green-50 rounded-lg">
+                          <LogIn className="h-5 w-5 text-green-600 mx-auto mb-1" />
+                          <div className="text-xs text-gray-600">{t('firstIn')}</div>
+                          <div className="text-sm font-bold text-gray-900">
+                            {currentDay.firstIn ?
+                              new Date(currentDay.firstIn.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
+                              : '--:--'
+                            }
+                          </div>
+                        </div>
+
+                        <div className="text-center p-3 bg-orange-50 rounded-lg">
+                          <LogOut className="h-5 w-5 text-orange-600 mx-auto mb-1" />
+                          <div className="text-xs text-gray-600">{t('lastOut')}</div>
+                          <div className="text-sm font-bold text-gray-900">
+                            {currentDay.lastOut ?
+                              new Date(currentDay.lastOut.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
+                              : '--:--'
+                            }
+                          </div>
+                        </div>
+
+                        <div className="text-center p-3 bg-blue-50 rounded-lg">
+                          <Activity className="h-5 w-5 text-blue-600 mx-auto mb-1" />
+                          <div className="text-xs text-gray-600">{t('totalEntries')}</div>
+                          <div className="text-sm font-bold text-gray-900">{currentDay.totalLogs.length}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Attendance Summary for Selected Date */}
+                    <div>
+                      <h3 className="text-md font-semibold text-gray-800 mb-3 pb-2 border-b border-gray-200 flex items-center gap-2">
+                        <Calendar className="h-5 w-5 text-blue-600" />
+                        📋 {new Date(selectedDate).toLocaleDateString()}
+                        {selectedDate === new Date().toISOString().split('T')[0] && (
+                          <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full ml-2">{t('today')}</span>
+                        )}
+                      </h3>
+
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div className="space-y-1">
+                          <label className="block text-xs font-medium text-gray-600">{t('firstIn')} Details</label>
+                          <div className="text-sm text-gray-900 font-medium">
+                            {currentDay.firstIn ?
+                              new Date(currentDay.firstIn.timestamp).toLocaleTimeString()
+                              : '--'
+                            }
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="block text-xs font-medium text-gray-600">{t('lastOut')} Details</label>
+                          <div className="text-sm text-gray-900 font-medium">
+                            {currentDay.lastOut ?
+                              new Date(currentDay.lastOut.timestamp).toLocaleTimeString()
+                              : '--'
+                            }
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="block text-xs font-medium text-gray-600">Status</label>
+                          <div className="flex items-center gap-1">
+                            <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                            <span className="text-sm text-gray-900 font-medium">{t('present')}</span>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="block text-xs font-medium text-gray-600">Duration</label>
+                          <div className="text-sm text-gray-900 font-medium">
+                            {currentDay.firstIn && currentDay.lastOut ?
+                              `${Math.round((currentDay.lastOut.timestamp - currentDay.firstIn.timestamp) / (1000 * 60 * 60))}h`
+                              : '--'
+                            }
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Quick Week View */}
+                    <div>
+                      <h3 className="text-md font-semibold text-gray-800 mb-4 pb-2 border-b border-gray-200 flex items-center gap-2">
+                        <Calendar className="h-5 w-5 text-blue-600" />
+                        📅 {t('last7Days')}
+                      </h3>
+                      <div className="grid grid-cols-7 gap-2">
+                        {attendanceHistory.days.slice(0, 7).map((day, index) => (
+                          <div
+                            key={day.date}
+                            className={`p-3 rounded-lg text-center cursor-pointer transition-colors border ${
+                              day.date === selectedDate
+                                ? 'bg-blue-100 border-blue-200 text-blue-800'
+                                : day.totalLogs.length > 0
+                                ? 'bg-white border-green-200 hover:bg-green-50'
+                                : 'bg-white border-red-200 hover:bg-red-50'
+                            }`}
+                            onClick={() => handleDateChange(day.date)}
+                          >
+                            <div className="text-xs font-medium text-gray-600">
+                              {new Date(day.date).toLocaleDateString([], { weekday: 'short' })}
+                            </div>
+                            <div className="text-sm font-bold text-gray-900">
+                              {new Date(day.date).getDate()}
+                            </div>
+                            <div className="text-xs mt-1">
+                              {day.totalLogs.length > 0 ? (
+                                <span className="text-green-600">✓</span>
+                              ) : (
+                                <span className="text-red-600">✗</span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex justify-start gap-4 pt-4 border-t border-gray-100">
+                      <button
+                        onClick={handleViewAttendanceLogs}
+                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                      >
+                        <Eye className="h-4 w-4" />
+                        {t('viewLogs')} ({currentDay.totalLogs.length})
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setShowAttendanceModal(false);
+                          setSelectedCattle(null);
+                          setAttendanceHistory(null);
+                        }}
+                        className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                      >
+                        {t('close')}
+                      </button>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Attendance Logs Modal */}
+      {showAttendanceLogsModal && attendanceLogs.length > 0 && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-4xl w-full h-[85vh] flex flex-col shadow-sm border border-gray-100">
+            {/* Header */}
+            <div className="p-6 border-b border-gray-100">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-3">
+                    <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
+                      <History className="h-5 w-5 text-blue-600" />
+                    </div>
+                    {t('attendanceLogs')}
+                  </h2>
+                  <p className="text-gray-600 mt-1">{selectedCattle?.name} - {new Date(selectedDate).toLocaleDateString()}</p>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowAttendanceLogsModal(false);
+                    setAttendanceLogs([]);
+                  }}
+                  className="text-gray-400 hover:text-gray-600 p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {/* Search and Summary */}
+              <div className="mb-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-md font-semibold text-gray-800 flex items-center gap-2">
+                    <Search className="h-4 w-4 text-blue-600" />
+                    Search Logs ({getFilteredLogs().length} entries)
+                  </h3>
+                  <div className="text-sm text-gray-600">
+                    Page {logsCurrentPage} of {getTotalPages()}
+                  </div>
+                </div>
+
+                <input
+                  type="text"
+                  placeholder="Search by location, type, or time..."
+                  value={logsSearchTerm}
+                  onChange={(e) => {
+                    setLogsSearchTerm(e.target.value);
+                    setLogsCurrentPage(1);
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              {getPaginatedLogs().length === 0 ? (
+                <div className="text-center py-8">
+                  <div className="h-16 w-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Search className="h-6 w-6 text-gray-400" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-gray-600 mb-2">No logs found</h3>
+                  <p className="text-gray-500">
+                    {logsSearchTerm ? 'Try adjusting your search terms' : 'No attendance logs for this date'}
+                  </p>
+                  {logsSearchTerm && (
+                    <button
+                      onClick={() => {
+                        setLogsSearchTerm('');
+                        setLogsCurrentPage(1);
+                      }}
+                      className="mt-3 text-blue-600 hover:text-blue-700 text-sm font-medium"
+                    >
+                      Clear search
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {getPaginatedLogs().map((log, index) => (
+                  <div key={log.id} className="flex items-center justify-between p-4 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 text-xs font-bold text-gray-600">
+                        {(logsCurrentPage - 1) * logsPerPage + index + 1}
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <div className={`p-2 rounded-lg ${log.type === 'IN' ? 'bg-green-100' : 'bg-orange-100'}`}>
+                          {log.type === 'IN' ? (
+                            <LogIn className="h-4 w-4 text-green-600" />
+                          ) : (
+                            <LogOut className="h-4 w-4 text-orange-600" />
+                          )}
+                        </div>
+
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                              log.type === 'IN' ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'
+                            }`}>
+                              {log.type}
+                            </span>
+                            <span className="text-sm text-gray-600">{log.location}</span>
+                          </div>
+                          {log.rfidScanned && (
+                            <div className="flex items-center gap-1 text-xs text-blue-600 mt-1">
+                              <Wifi className="h-3 w-3" />
+                              RFID Scanned
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="text-right">
+                      <p className="font-mono text-sm font-medium text-gray-900">
+                        {new Date(log.timestamp).toLocaleTimeString()}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {new Date(log.timestamp).toLocaleDateString()}
+                      </p>
+                    </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="p-6 border-t border-gray-100">
+              <div className="flex items-center justify-between">
+                <button
+                  onClick={() => {
+                    setShowAttendanceLogsModal(false);
+                    setAttendanceLogs([]);
+                    setLogsCurrentPage(1);
+                    setLogsSearchTerm('');
+                  }}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  {t('close')}
+                </button>
+
+                {getTotalPages() > 1 && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setLogsCurrentPage(Math.max(1, logsCurrentPage - 1))}
+                      disabled={logsCurrentPage === 1}
+                      className="px-3 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Previous
+                    </button>
+
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: Math.min(5, getTotalPages()) }, (_, i) => {
+                        let pageNum;
+                        if (getTotalPages() <= 5) {
+                          pageNum = i + 1;
+                        } else if (logsCurrentPage <= 3) {
+                          pageNum = i + 1;
+                        } else if (logsCurrentPage >= getTotalPages() - 2) {
+                          pageNum = getTotalPages() - 4 + i;
+                        } else {
+                          pageNum = logsCurrentPage - 2 + i;
+                        }
+
+                        return (
+                          <button
+                            key={pageNum}
+                            onClick={() => setLogsCurrentPage(pageNum)}
+                            className={`px-3 py-2 text-sm rounded-lg transition-colors ${
+                              logsCurrentPage === pageNum
+                                ? 'bg-blue-600 text-white'
+                                : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
+                            }`}
+                          >
+                            {pageNum}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <button
+                      onClick={() => setLogsCurrentPage(Math.min(getTotalPages(), logsCurrentPage + 1))}
+                      disabled={logsCurrentPage === getTotalPages()}
+                      className="px-3 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Next
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

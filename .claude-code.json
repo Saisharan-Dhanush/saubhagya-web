@@ -1,9 +1,9 @@
 {
   "mcp": {
     "servers": {
-      "shadcn-ui": {
+      "shadcn": {
         "command": "npx",
-        "args": ["@jpisnice/shadcn-ui-mcp-server"],
+        "args": ["shadcn@latest", "mcp"],
         "cwd": "."
       }
     }
