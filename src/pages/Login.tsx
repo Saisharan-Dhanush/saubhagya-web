@@ -30,7 +30,7 @@ export default function Login() {
 
   const translations = {
     en: {
-      title: 'SAUBHAGYA Admin Dashboard',
+      title: 'SAUBHAGYA',
       subtitle: 'Biogas Management & Rural Energy Distribution',
       phone: 'Phone Number',
       password: 'Password',
@@ -40,7 +40,7 @@ export default function Login() {
       passwordPlaceholder: 'Enter your password'
     },
     hi: {
-      title: 'सौभाग्य एडमिन डैशबोर्ड',
+      title: 'सौभाग्य',
       subtitle: 'बायोगैस प्रबंधन और ग्रामीण ऊर्जा वितरण',
       phone: 'फ़ोन नंबर',
       password: 'पासवर्ड',
