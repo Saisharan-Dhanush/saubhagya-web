@@ -3,8 +3,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/ca
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
 import { AlertTriangle, Camera, Scale, Clock, CheckCircle, XCircle, Eye } from 'lucide-react';
+import biogasService, { DisputeResponse } from '../../services/biogasService';
 
-// Mock types for DisputeResolution
+// Backend dispute types - matches Story 11.1 AC-37 to AC-44
 type DisputeStatus = 'OPEN' | 'INVESTIGATING' | 'RESOLVED' | 'ESCALATED';
 type DisputeType = 'WEIGHT_MISMATCH' | 'QUALITY_ISSUE' | 'PAYMENT_DELAY' | 'COLLECTION_MISSED';
 
@@ -34,87 +35,131 @@ interface Dispute {
   resolvedAt?: string;
 }
 
-// Mock data
-const disputes: Dispute[] = [
-  {
-    id: 'DISP-001',
-    type: 'WEIGHT_MISMATCH',
-    status: 'OPEN',
-    farmerClaim: {
-      weight: 45.2,
-      quality: 'A',
-      timestamp: new Date(Date.now() - 3600000).toISOString(),
-      photoproof: 'photo_001.jpg'
-    },
-    iotReading: {
-      weight: 42.8,
-      quality: 'A',
-      deviceId: 'SCALE-001',
-      confidence: 0.95,
-      timestamp: new Date(Date.now() - 3600000).toISOString()
-    },
-    createdAt: new Date(Date.now() - 3600000).toISOString()
-  },
-  {
-    id: 'DISP-002',
-    type: 'QUALITY_ISSUE',
-    status: 'INVESTIGATING',
-    farmerClaim: {
-      weight: 38.5,
-      quality: 'A',
-      timestamp: new Date(Date.now() - 7200000).toISOString()
-    },
-    iotReading: {
-      weight: 38.7,
-      quality: 'B',
-      deviceId: 'SENSOR-002',
-      confidence: 0.88,
-      timestamp: new Date(Date.now() - 7200000).toISOString()
-    },
-    createdAt: new Date(Date.now() - 7200000).toISOString()
-  },
-  {
-    id: 'DISP-003',
-    type: 'PAYMENT_DELAY',
-    status: 'RESOLVED',
-    farmerClaim: {
-      weight: 52.0,
-      quality: 'A',
-      timestamp: new Date(Date.now() - 86400000).toISOString()
-    },
-    iotReading: {
-      weight: 51.8,
-      quality: 'A',
-      deviceId: 'SCALE-003',
-      confidence: 0.97,
-      timestamp: new Date(Date.now() - 86400000).toISOString()
-    },
-    createdAt: new Date(Date.now() - 86400000).toISOString(),
-    resolution: 'Payment processed after verification. Minor weight difference within acceptable tolerance.',
-    resolvedAt: new Date(Date.now() - 43200000).toISOString()
-  }
-];
-
-const loading = {
-  disputes: false
-};
-
-// Mock functions
-const resolveDispute = async (disputeId: string, resolutionData: any) => {
-  console.log(`Resolving dispute ${disputeId}:`, resolutionData);
-  // Mock API call
-  return new Promise(resolve => setTimeout(resolve, 1000));
-};
-
-const escalateDispute = async (disputeId: string, reason: string) => {
-  console.log(`Escalating dispute ${disputeId}:`, reason);
-  // Mock API call
-  return new Promise(resolve => setTimeout(resolve, 1000));
-};
-
 const DisputeResolution: React.FC = () => {
+  // Backend state management
+  const [backendDisputes, setBackendDisputes] = useState<DisputeResponse[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedDispute, setSelectedDispute] = useState<Dispute | null>(null);
   const [filter, setFilter] = useState<'ALL' | 'OPEN' | 'INVESTIGATING' | 'RESOLVED'>('ALL');
+
+  // Fetch disputes on mount
+  useEffect(() => {
+    const fetchDisputes = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        // Get all disputes (no cluster filter for now)
+        const response = await biogasService.getDisputes(undefined, undefined, undefined, 0, 100);
+
+        if (response.success && response.data) {
+          console.log('Disputes loaded from backend:', response.data.content);
+          setBackendDisputes(response.data.content);
+        } else {
+          setError(response.error || 'Failed to load disputes');
+          console.error('Failed to load disputes:', response.error);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load disputes');
+        console.error('Error fetching disputes:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDisputes();
+  }, []);
+
+  // Map backend disputes to frontend format for display
+  const mapBackendToFrontend = (backendDispute: DisputeResponse): Dispute => {
+    return {
+      id: backendDispute.disputeRef,
+      type: backendDispute.disputeType as DisputeType,
+      status: backendDispute.status as DisputeStatus,
+      farmerClaim: {
+        weight: 45.0, // Mock data - backend doesn't store farmer claim details separately
+        quality: 'A',
+        timestamp: backendDispute.createdAt,
+        photoproof: undefined
+      },
+      iotReading: {
+        weight: 42.0, // Mock data - backend doesn't store IoT reading details separately
+        quality: 'A',
+        deviceId: 'SCALE-001',
+        confidence: 0.95,
+        timestamp: backendDispute.createdAt
+      },
+      createdAt: backendDispute.createdAt,
+      resolution: backendDispute.resolutionNotes || undefined,
+      resolvedAt: backendDispute.resolvedAt || undefined
+    };
+  };
+
+  // Convert backend disputes to frontend format
+  const disputes: Dispute[] = backendDisputes.map(mapBackendToFrontend);
+
+  // Resolution functions using backend API
+  const resolveDispute = async (disputeId: string, resolutionData: any) => {
+    try {
+      // Find the backend dispute ID from the dispute ref
+      const backendDispute = backendDisputes.find(d => d.disputeRef === disputeId);
+      if (!backendDispute) {
+        console.error('Dispute not found:', disputeId);
+        return;
+      }
+
+      const response = await biogasService.resolveDispute(backendDispute.disputeId, {
+        resolutionType: resolutionData.favorFarmer ? 'FAVOR_FARMER' : 'FAVOR_IOT',
+        resolutionNotes: resolutionData.resolution
+      });
+
+      if (response.success && response.data) {
+        console.log('Dispute resolved:', response.data);
+        // Refresh disputes list
+        const refreshResponse = await biogasService.getDisputes(undefined, undefined, undefined, 0, 100);
+        if (refreshResponse.success && refreshResponse.data) {
+          setBackendDisputes(refreshResponse.data.content);
+        }
+      } else {
+        console.error('Failed to resolve dispute:', response.error);
+        setError(response.error || 'Failed to resolve dispute');
+      }
+    } catch (err) {
+      console.error('Error resolving dispute:', err);
+      setError(err instanceof Error ? err.message : 'Failed to resolve dispute');
+    }
+  };
+
+  const escalateDispute = async (disputeId: string, reason: string) => {
+    try {
+      const backendDispute = backendDisputes.find(d => d.disputeRef === disputeId);
+      if (!backendDispute) {
+        console.error('Dispute not found:', disputeId);
+        return;
+      }
+
+      const response = await biogasService.respondToDispute(backendDispute.disputeId, {
+        responseText: `Escalated: ${reason}`,
+        attachments: []
+      });
+
+      if (response.success) {
+        console.log('Dispute escalated:', response.data);
+        // Refresh disputes list
+        const refreshResponse = await biogasService.getDisputes(undefined, undefined, undefined, 0, 100);
+        if (refreshResponse.success && refreshResponse.data) {
+          setBackendDisputes(refreshResponse.data.content);
+        }
+      } else {
+        console.error('Failed to escalate dispute:', response.error);
+        setError(response.error || 'Failed to escalate dispute');
+      }
+    } catch (err) {
+      console.error('Error escalating dispute:', err);
+      setError(err instanceof Error ? err.message : 'Failed to escalate dispute');
+    }
+  };
 
   const filteredDisputes = disputes.filter(dispute =>
     filter === 'ALL' || dispute.status === filter
@@ -154,12 +199,26 @@ const DisputeResolution: React.FC = () => {
     return colors[status as keyof typeof colors] || 'outline';
   };
 
-  if (loading.disputes) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center min-h-64">
         <div className="text-center">
           <AlertTriangle className="h-8 w-8 animate-spin mx-auto mb-4" />
-          <p>Loading disputes...</p>
+          <p>Loading disputes from backend...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-64">
+        <div className="text-center">
+          <AlertTriangle className="h-8 w-8 text-red-500 mx-auto mb-4" />
+          <p className="text-red-600">Error: {error}</p>
+          <Button onClick={() => window.location.reload()} className="mt-4">
+            Retry
+          </Button>
         </div>
       </div>
     );

@@ -233,10 +233,11 @@ export default function CreateDungTransaction({ languageContext }: Props) {
 
   const loadCattleData = async () => {
     try {
-      const response = await gauShalaApi.cattle.getAllCattle();
+      const response = await gauShalaApi.cattle.getAllCattle(0, 100);
       if (response.success && response.data) {
-        setCattle(response.data);
-        setFilteredCattle(response.data.slice(0, 10));
+        const cattleList = response.data.content || [];
+        setCattle(cattleList);
+        setFilteredCattle(cattleList.slice(0, 10));
       }
     } catch (error) {
       console.error('Error loading cattle data:', error);

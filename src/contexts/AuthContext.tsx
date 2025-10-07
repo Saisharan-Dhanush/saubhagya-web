@@ -150,18 +150,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Import the API service dynamically to avoid circular dependencies
       const { apiService } = await import('../services/api')
 
-      // Use email format for login (converting phone to email format for demo)
-      const email = phone.includes('@') ? phone : `${phone.replace('+91', '')}@saubhagya.com`
-
-      const loginResponse = await apiService.login(email, password)
+      // Send phone directly to API service (no email conversion needed)
+      const loginResponse = await apiService.login(phone, password)
 
       if (loginResponse.success && loginResponse.data) {
         const { user: apiUser, token } = loginResponse.data
 
         // Map API user to our User interface
+        // Get the first role from the backend roles array
+        const backendRole = apiUser.role || (apiUser.roles && apiUser.roles[0]) || 'USER'
+
         // Override with correct role mapping for demo credentials
-        const correctRole = getCorrectRoleForPhone(phone) || mapApiRoleToUserRole(apiUser.role)
-        const correctAppType = getCorrectAppTypeForPhone(phone) || getAppTypeFromRole(apiUser.role)
+        const correctRole = getCorrectRoleForPhone(phone) || mapBackendRoleToUserRole(backendRole)
+        const correctAppType = getCorrectAppTypeForPhone(phone) || getAppTypeFromRole(backendRole)
 
         const mappedUser: User = {
           id: apiUser.id,
@@ -169,14 +170,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           email: apiUser.email,
           name: getCorrectNameForPhone(phone) || apiUser.name,
           role: correctRole,
-          department: getDepartmentFromRole(correctRole),
+          department: getDepartmentFromRole(backendRole),
           permissions: mapApiPermissions(apiUser.permissions || []),
           lastAccess: new Date(),
           appType: correctAppType,
-          executiveLevel: getExecutiveLevelFromRole(correctRole),
+          executiveLevel: getExecutiveLevelFromRole(backendRole),
           // API fields
           isActive: true,
-          roles: [correctRole]
+          roles: apiUser.roles || [backendRole]
         }
 
         setUser(mappedUser)
@@ -303,7 +304,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Simple password validation for demo (in real app, this would be properly hashed)
     // Accept multiple valid passwords for different user types
-    const validPasswords = ['password123', 'fieldworker123', 'admin123'];
+    const validPasswords = ['password123', 'fieldworker123', 'admin123', 'Farmer@123'];
     if (!validPasswords.includes(password)) {
       throw new Error('Invalid phone number or password')
     }
@@ -456,6 +457,7 @@ function mapBackendRoleToUserRole(backendRole: string): UserRole {
     case 'FIELD_WORKER':
       return 'field_worker'
     case 'CLUSTER_MANAGER':
+    case 'BIOGAS_SANGH':
       return 'cluster_manager'
     case 'CBG_SALES':
     case 'SALES_EXECUTIVE':
@@ -485,6 +487,7 @@ function getDepartmentFromRole(backendRole: string): string {
     case 'FIELD_WORKER':
       return 'Field Operations'
     case 'CLUSTER_MANAGER':
+    case 'BIOGAS_SANGH':
       return 'Cluster Operations'
     case 'CBG_SALES':
     case 'SALES_EXECUTIVE':
@@ -514,6 +517,7 @@ function getAppTypeFromRole(backendRole: string): User['appType'] {
     case 'FIELD_WORKER':
       return 'gausakhi'
     case 'CLUSTER_MANAGER':
+    case 'BIOGAS_SANGH':
       return 'biogassangh'
     case 'CBG_SALES':
     case 'SALES_EXECUTIVE':

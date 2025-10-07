@@ -3,7 +3,9 @@
  * Handles all API calls for cattle management, transactions, and dashboard data
  */
 
-const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8080';
+// Gaushala service runs on port 8086 with /gaushala-service context path
+const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8086/gaushala-service';
+const GAUSHALA_SERVICE_URL = 'http://localhost:8086/gaushala-service';
 
 export interface ApiResponse<T> {
   success: boolean;
@@ -12,8 +14,35 @@ export interface ApiResponse<T> {
   error?: string;
 }
 
-// Cattle Management APIs
+// Cattle Management APIs - Updated to match backend CattleDTO
 export interface Cattle {
+  id?: number;
+  uniqueAnimalId: string;
+  name: string;
+  breedId: number;           // Changed from breed: string
+  speciesId: number;         // Changed from species: string
+  genderId: number;          // Changed from gender: string
+  colorId: number;           // Changed from color: string
+  dob: string;               // Changed from age: number (ISO format LocalDateTime)
+  weight?: number;
+  height?: number;
+  rfidTagNo?: string;        // Changed from rfidTag
+  gaushalaId: number;        // Changed from gaushala: string
+  shedNumber?: string;
+  healthStatus?: string;
+  vetName?: string;
+  vetContact?: string;
+  photoUrl?: string;
+  isActive?: boolean;
+  totalDungCollected?: number;
+  lastDungCollection?: number;
+  dateOfEntry?: string;      // ISO format LocalDateTime - REQUIRED field
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// Legacy Cattle interface for IoT service compatibility
+export interface CattleLegacy {
   id: string;
   rfidTag: string;
   name: string;
@@ -95,6 +124,141 @@ export interface TopPerformer {
   avgQuality: number;
 }
 
+// Medicine entity interface - matches backend Medicine.java exactly
+export interface Medicine {
+  id?: number;
+  name: string;
+  description?: string;
+  dosage: string;
+  unit: string;
+  quantity: number;
+  expiryDate: string; // LocalDateTime as ISO string
+  manufacturer?: string;
+  batchNumber?: string;
+  purpose?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// FoodHistory entity interface - matches backend FoodHistory.java exactly
+export interface FoodHistory {
+  id?: number;
+  livestockId: number;
+  shedId: number;
+  inventoryId?: number;
+  consumeQuantity: number;
+  duration: string;
+  date: string; // LocalDateTime as ISO string
+  comments?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// Paged response interface for list endpoints
+export interface PagedResponse<T> {
+  content: T[];
+  pageNumber: number;
+  pageSize: number;
+  totalElements: number;
+  totalPages: number;
+  last: boolean;
+  first: boolean;
+}
+
+// Master Data interfaces - for dropdowns and lookups
+export interface Breed {
+  id: number;
+  name: string;
+  description?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface Species {
+  id: number;
+  name: string;
+  description?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface Gender {
+  id: number;
+  name: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface Color {
+  id: number;
+  name: string;
+  hexCode?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface Location {
+  id: number;
+  name: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
+  contactPerson?: string;
+  contactPhone?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// Master data cache - in-memory caching to avoid repeated API calls
+const masterDataCache = {
+  breeds: null as Breed[] | null,
+  species: null as Species[] | null,
+  genders: null as Gender[] | null,
+  colors: null as Color[] | null,
+  locations: null as Location[] | null,
+  cacheTimestamp: {
+    breeds: 0,
+    species: 0,
+    genders: 0,
+    colors: 0,
+    locations: 0,
+  },
+  CACHE_DURATION: 5 * 60 * 1000, // 5 minutes cache
+};
+
+// Helper functions for age/dob conversion
+/**
+ * Convert age in years to date of birth in ISO format
+ * @param ageYears - Age in years
+ * @returns ISO formatted date string for dob
+ */
+export function calculateDobFromAge(ageYears: number): string {
+  const today = new Date();
+  const birthYear = today.getFullYear() - ageYears;
+  const dob = new Date(birthYear, today.getMonth(), today.getDate());
+  return dob.toISOString();
+}
+
+/**
+ * Convert date of birth to age in years
+ * @param dob - Date of birth in ISO format
+ * @returns Age in years
+ */
+export function calculateAgeFromDob(dob: string): number {
+  const birthDate = new Date(dob);
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const monthDiff = today.getMonth() - birthDate.getMonth();
+
+  // Adjust age if birthday hasn't occurred this year yet
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+    age--;
+  }
+
+  return age;
+}
+
 // API Helper function
 async function apiCall<T>(
   endpoint: string,
@@ -150,136 +314,60 @@ export const dashboardApi = {
   },
 };
 
-// Cattle Management API - Using proper microservices architecture
+// Cattle Management API - Using gaushala-service directly
 export const cattleApi = {
-  async getAllCattle(): Promise<ApiResponse<Cattle[]>> {
-    // Use IoT Service via proper microservices routing (Auth gateway)
-    try {
-      // Import microservices client dynamically to avoid circular dependencies
-      const { IoTServiceClient } = await import('../microservices');
-      const result = await IoTServiceClient.getCattleList();
-
-      return {
-        success: result.success,
-        data: result.data || [],
-      };
-    } catch (error) {
-      console.error('Get all cattle failed:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred',
-      };
-    }
+  async getAllCattle(page: number = 0, size: number = 100): Promise<ApiResponse<PagedResponse<Cattle>>> {
+    // Use Gaushala Service directly on port 8086
+    return apiCall<PagedResponse<Cattle>>(`/api/v1/gaushala/cattle?page=${page}&size=${size}`);
   },
 
-  async getCattleById(id: string): Promise<ApiResponse<Cattle>> {
-    const allCattleResponse = await this.getAllCattle();
-    if (!allCattleResponse.success || !allCattleResponse.data) {
-      return {
-        success: false,
-        error: allCattleResponse.error || 'Failed to fetch cattle data'
-      };
-    }
-
-    const cattle = allCattleResponse.data.find(c => c.id === id);
-    if (!cattle) {
-      return {
-        success: false,
-        error: 'Cattle not found',
-      };
-    }
-
-    return {
-      success: true,
-      data: cattle,
-    };
+  /**
+   * Get cattle by ID from Gaushala Service
+   * @param id - Cattle ID (numeric)
+   * @returns Cattle details
+   */
+  async getCattleById(id: number): Promise<ApiResponse<Cattle>> {
+    return apiCall<Cattle>(`/api/v1/gaushala/cattle/${id}`);
   },
 
   async getCattleByRfid(rfidTag: string): Promise<ApiResponse<Cattle>> {
     return apiCall<Cattle>(`/api/v1/cattle/rfid/${encodeURIComponent(rfidTag)}`);
   },
 
+  /**
+   * Create new cattle in Gaushala Service
+   * @param cattle - Cattle data with proper field mappings (breedId, speciesId, dob, etc.)
+   * @returns Created cattle with generated ID
+   */
   async createCattle(cattle: Omit<Cattle, 'id' | 'createdAt' | 'updatedAt'>): Promise<ApiResponse<Cattle>> {
-    try {
-      const { IoTServiceClient } = await import('../microservices');
-      const result = await IoTServiceClient.addCattle({
-        tagId: cattle.rfidTag,
-        name: cattle.name,
-        breed: cattle.breed,
-        age: cattle.age,
-        weight: cattle.weight,
-      });
-
-      return {
-        success: result.success,
-        data: result.data,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred',
-      };
-    }
+    return apiCall<Cattle>(`/api/v1/gaushala/cattle`, {
+      method: 'POST',
+      body: JSON.stringify(cattle),
+    });
   },
 
-  async updateCattle(id: string, updates: Partial<Cattle>): Promise<ApiResponse<Cattle>> {
-    try {
-      const { IoTServiceClient } = await import('../microservices');
-
-      // Prepare complete data structure for backend
-      const updateData: any = {
-        id: id,
-        name: updates.name,
-        breed: updates.breed,
-        age: updates.age,
-        weight: updates.weight,
-      };
-
-      // Add optional fields if provided
-      if (updates.rfidTag) {
-        updateData.rfidTag = updates.rfidTag;
-      }
-      if (updates.health) {
-        updateData.health = updates.health;
-      }
-      if (updates.owner) {
-        updateData.ownerName = updates.owner;
-      }
-      if (updates.ownerId) {
-        updateData.ownerId = updates.ownerId;
-      }
-      if (updates.location) {
-        updateData.location = updates.location;
-      }
-
-      const result = await IoTServiceClient.updateCattle(id, updateData);
-
-      return {
-        success: result.success,
-        data: result.data,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred',
-      };
-    }
+  /**
+   * Update existing cattle in Gaushala Service
+   * @param id - Cattle ID (numeric)
+   * @param updates - Partial cattle data to update
+   * @returns Updated cattle details
+   */
+  async updateCattle(id: number, updates: Partial<Cattle>): Promise<ApiResponse<Cattle>> {
+    return apiCall<Cattle>(`/api/v1/gaushala/cattle/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    });
   },
 
-  async deleteCattle(id: string): Promise<ApiResponse<void>> {
-    try {
-      const { IoTServiceClient } = await import('../microservices');
-      const result = await IoTServiceClient.deleteCattle(id);
-
-      return {
-        success: result.success,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred',
-      };
-    }
+  /**
+   * Delete cattle from Gaushala Service
+   * @param id - Cattle ID (numeric)
+   * @returns Success status
+   */
+  async deleteCattle(id: number): Promise<ApiResponse<void>> {
+    return apiCall<void>(`/api/v1/gaushala/cattle/${id}`, {
+      method: 'DELETE',
+    });
   },
 
   async scanRfid(): Promise<ApiResponse<{ rfidTag: string; cattleInfo?: Cattle }>> {
@@ -411,11 +499,1205 @@ export const transactionApi = {
   },
 };
 
+// Medicine API - All operations with exact backend field names
+export const medicineApi = {
+  async getAllMedicines(page: number = 0, size: number = 20): Promise<ApiResponse<PagedResponse<Medicine>>> {
+    try {
+      const response = await fetch(`${GAUSHALA_SERVICE_URL}/api/v1/gaushala/medicines?page=${page}&size=${size}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(localStorage.getItem('saubhagya_jwt_token') && {
+            Authorization: `Bearer ${localStorage.getItem('saubhagya_jwt_token')}`
+          }),
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        return {
+          success: false,
+          error: error.message || `HTTP error! status: ${response.status}`,
+        };
+      }
+
+      const data = await response.json();
+      return {
+        success: true,
+        data,
+      };
+    } catch (error) {
+      console.error('Get all medicines failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+      };
+    }
+  },
+
+  async getMedicineById(id: number): Promise<ApiResponse<Medicine>> {
+    try {
+      const response = await fetch(`${GAUSHALA_SERVICE_URL}/api/v1/gaushala/medicines/${id}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(localStorage.getItem('saubhagya_jwt_token') && {
+            Authorization: `Bearer ${localStorage.getItem('saubhagya_jwt_token')}`
+          }),
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        return {
+          success: false,
+          error: error.message || `HTTP error! status: ${response.status}`,
+        };
+      }
+
+      const data = await response.json();
+      return {
+        success: true,
+        data,
+      };
+    } catch (error) {
+      console.error('Get medicine by ID failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+      };
+    }
+  },
+
+  async searchMedicines(name: string, page: number = 0, size: number = 20): Promise<ApiResponse<PagedResponse<Medicine>>> {
+    try {
+      const response = await fetch(`${GAUSHALA_SERVICE_URL}/api/v1/gaushala/medicines/search?name=${encodeURIComponent(name)}&page=${page}&size=${size}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(localStorage.getItem('saubhagya_jwt_token') && {
+            Authorization: `Bearer ${localStorage.getItem('saubhagya_jwt_token')}`
+          }),
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        return {
+          success: false,
+          error: error.message || `HTTP error! status: ${response.status}`,
+        };
+      }
+
+      const data = await response.json();
+      return {
+        success: true,
+        data,
+      };
+    } catch (error) {
+      console.error('Search medicines failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+      };
+    }
+  },
+
+  async getExpiredMedicines(): Promise<ApiResponse<Medicine[]>> {
+    try {
+      const response = await fetch(`${GAUSHALA_SERVICE_URL}/api/v1/gaushala/medicines/expired`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(localStorage.getItem('saubhagya_jwt_token') && {
+            Authorization: `Bearer ${localStorage.getItem('saubhagya_jwt_token')}`
+          }),
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        return {
+          success: false,
+          error: error.message || `HTTP error! status: ${response.status}`,
+        };
+      }
+
+      const data = await response.json();
+      return {
+        success: true,
+        data,
+      };
+    } catch (error) {
+      console.error('Get expired medicines failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+      };
+    }
+  },
+
+  async getLowStockMedicines(threshold: number = 10): Promise<ApiResponse<Medicine[]>> {
+    try {
+      const response = await fetch(`${GAUSHALA_SERVICE_URL}/api/v1/gaushala/medicines/low-stock?threshold=${threshold}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(localStorage.getItem('saubhagya_jwt_token') && {
+            Authorization: `Bearer ${localStorage.getItem('saubhagya_jwt_token')}`
+          }),
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        return {
+          success: false,
+          error: error.message || `HTTP error! status: ${response.status}`,
+        };
+      }
+
+      const data = await response.json();
+      return {
+        success: true,
+        data,
+      };
+    } catch (error) {
+      console.error('Get low stock medicines failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+      };
+    }
+  },
+
+  async createMedicine(medicine: Omit<Medicine, 'id' | 'createdAt' | 'updatedAt'>): Promise<ApiResponse<Medicine>> {
+    try {
+      const response = await fetch(`${GAUSHALA_SERVICE_URL}/api/v1/gaushala/medicines`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(localStorage.getItem('saubhagya_jwt_token') && {
+            Authorization: `Bearer ${localStorage.getItem('saubhagya_jwt_token')}`
+          }),
+        },
+        body: JSON.stringify(medicine),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        return {
+          success: false,
+          error: error.message || `HTTP error! status: ${response.status}`,
+        };
+      }
+
+      const data = await response.json();
+      return {
+        success: true,
+        data,
+      };
+    } catch (error) {
+      console.error('Create medicine failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+      };
+    }
+  },
+
+  async updateMedicine(id: number, medicine: Partial<Medicine>): Promise<ApiResponse<Medicine>> {
+    try {
+      const response = await fetch(`${GAUSHALA_SERVICE_URL}/api/v1/gaushala/medicines/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(localStorage.getItem('saubhagya_jwt_token') && {
+            Authorization: `Bearer ${localStorage.getItem('saubhagya_jwt_token')}`
+          }),
+        },
+        body: JSON.stringify(medicine),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        return {
+          success: false,
+          error: error.message || `HTTP error! status: ${response.status}`,
+        };
+      }
+
+      const data = await response.json();
+      return {
+        success: true,
+        data,
+      };
+    } catch (error) {
+      console.error('Update medicine failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+      };
+    }
+  },
+
+  async deleteMedicine(id: number): Promise<ApiResponse<void>> {
+    try {
+      const response = await fetch(`${GAUSHALA_SERVICE_URL}/api/v1/gaushala/medicines/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(localStorage.getItem('saubhagya_jwt_token') && {
+            Authorization: `Bearer ${localStorage.getItem('saubhagya_jwt_token')}`
+          }),
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        return {
+          success: false,
+          error: error.message || `HTTP error! status: ${response.status}`,
+        };
+      }
+
+      return {
+        success: true,
+      };
+    } catch (error) {
+      console.error('Delete medicine failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+      };
+    }
+  },
+};
+
+// FoodHistory API - All operations with exact backend field names
+export const foodHistoryApi = {
+  async getAllFoodHistory(page: number = 0, size: number = 20): Promise<ApiResponse<PagedResponse<FoodHistory>>> {
+    try {
+      const response = await fetch(`${GAUSHALA_SERVICE_URL}/api/v1/gaushala/food-history?page=${page}&size=${size}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(localStorage.getItem('saubhagya_jwt_token') && {
+            Authorization: `Bearer ${localStorage.getItem('saubhagya_jwt_token')}`
+          }),
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        return {
+          success: false,
+          error: error.message || `HTTP error! status: ${response.status}`,
+        };
+      }
+
+      const data = await response.json();
+      return {
+        success: true,
+        data,
+      };
+    } catch (error) {
+      console.error('Get all food history failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+      };
+    }
+  },
+
+  async getFoodHistoryById(id: number): Promise<ApiResponse<FoodHistory>> {
+    try {
+      const response = await fetch(`${GAUSHALA_SERVICE_URL}/api/v1/gaushala/food-history/${id}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(localStorage.getItem('saubhagya_jwt_token') && {
+            Authorization: `Bearer ${localStorage.getItem('saubhagya_jwt_token')}`
+          }),
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        return {
+          success: false,
+          error: error.message || `HTTP error! status: ${response.status}`,
+        };
+      }
+
+      const data = await response.json();
+      return {
+        success: true,
+        data,
+      };
+    } catch (error) {
+      console.error('Get food history by ID failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+      };
+    }
+  },
+
+  async getFoodHistoryByLivestock(livestockId: number, page: number = 0, size: number = 20): Promise<ApiResponse<PagedResponse<FoodHistory>>> {
+    try {
+      const response = await fetch(`${GAUSHALA_SERVICE_URL}/api/v1/gaushala/food-history/livestock/${livestockId}?page=${page}&size=${size}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(localStorage.getItem('saubhagya_jwt_token') && {
+            Authorization: `Bearer ${localStorage.getItem('saubhagya_jwt_token')}`
+          }),
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        return {
+          success: false,
+          error: error.message || `HTTP error! status: ${response.status}`,
+        };
+      }
+
+      const data = await response.json();
+      return {
+        success: true,
+        data,
+      };
+    } catch (error) {
+      console.error('Get food history by livestock failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+      };
+    }
+  },
+
+  async getFoodHistoryByShed(shedId: number, page: number = 0, size: number = 20): Promise<ApiResponse<PagedResponse<FoodHistory>>> {
+    try {
+      const response = await fetch(`${GAUSHALA_SERVICE_URL}/api/v1/gaushala/food-history/shed/${shedId}?page=${page}&size=${size}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(localStorage.getItem('saubhagya_jwt_token') && {
+            Authorization: `Bearer ${localStorage.getItem('saubhagya_jwt_token')}`
+          }),
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        return {
+          success: false,
+          error: error.message || `HTTP error! status: ${response.status}`,
+        };
+      }
+
+      const data = await response.json();
+      return {
+        success: true,
+        data,
+      };
+    } catch (error) {
+      console.error('Get food history by shed failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+      };
+    }
+  },
+
+  async createFoodHistory(foodHistory: Omit<FoodHistory, 'id' | 'createdAt' | 'updatedAt'>): Promise<ApiResponse<FoodHistory>> {
+    try {
+      const response = await fetch(`${GAUSHALA_SERVICE_URL}/api/v1/gaushala/food-history`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(localStorage.getItem('saubhagya_jwt_token') && {
+            Authorization: `Bearer ${localStorage.getItem('saubhagya_jwt_token')}`
+          }),
+        },
+        body: JSON.stringify(foodHistory),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        return {
+          success: false,
+          error: error.message || `HTTP error! status: ${response.status}`,
+        };
+      }
+
+      const data = await response.json();
+      return {
+        success: true,
+        data,
+      };
+    } catch (error) {
+      console.error('Create food history failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+      };
+    }
+  },
+
+  async updateFoodHistory(id: number, foodHistory: Partial<FoodHistory>): Promise<ApiResponse<FoodHistory>> {
+    try {
+      const response = await fetch(`${GAUSHALA_SERVICE_URL}/api/v1/gaushala/food-history/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(localStorage.getItem('saubhagya_jwt_token') && {
+            Authorization: `Bearer ${localStorage.getItem('saubhagya_jwt_token')}`
+          }),
+        },
+        body: JSON.stringify(foodHistory),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        return {
+          success: false,
+          error: error.message || `HTTP error! status: ${response.status}`,
+        };
+      }
+
+      const data = await response.json();
+      return {
+        success: true,
+        data,
+      };
+    } catch (error) {
+      console.error('Update food history failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+      };
+    }
+  },
+
+  async deleteFoodHistory(id: number): Promise<ApiResponse<void>> {
+    try {
+      const response = await fetch(`${GAUSHALA_SERVICE_URL}/api/v1/gaushala/food-history/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(localStorage.getItem('saubhagya_jwt_token') && {
+            Authorization: `Bearer ${localStorage.getItem('saubhagya_jwt_token')}`
+          }),
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        return {
+          success: false,
+          error: error.message || `HTTP error! status: ${response.status}`,
+        };
+      }
+
+      return {
+        success: true,
+      };
+    } catch (error) {
+      console.error('Delete food history failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+      };
+    }
+  },
+};
+
+// Master Data API - with intelligent caching
+export const masterDataApi = {
+  /**
+   * Get all breeds with caching
+   */
+  async getAllBreeds(forceRefresh: boolean = false): Promise<ApiResponse<Breed[]>> {
+    try {
+      // Check cache first
+      const now = Date.now();
+      if (
+        !forceRefresh &&
+        masterDataCache.breeds &&
+        now - masterDataCache.cacheTimestamp.breeds < masterDataCache.CACHE_DURATION
+      ) {
+        return {
+          success: true,
+          data: masterDataCache.breeds,
+        };
+      }
+
+      const response = await fetch(`${GAUSHALA_SERVICE_URL}/api/v1/gaushala/master/breeds`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(localStorage.getItem('saubhagya_jwt_token') && {
+            Authorization: `Bearer ${localStorage.getItem('saubhagya_jwt_token')}`
+          }),
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        return {
+          success: false,
+          error: error.message || `HTTP error! status: ${response.status}`,
+        };
+      }
+
+      const data = await response.json();
+
+      // Update cache
+      masterDataCache.breeds = data;
+      masterDataCache.cacheTimestamp.breeds = now;
+
+      return {
+        success: true,
+        data,
+      };
+    } catch (error) {
+      console.error('Get all breeds failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+      };
+    }
+  },
+
+  /**
+   * Get all species with caching
+   */
+  async getAllSpecies(forceRefresh: boolean = false): Promise<ApiResponse<Species[]>> {
+    try {
+      // Check cache first
+      const now = Date.now();
+      if (
+        !forceRefresh &&
+        masterDataCache.species &&
+        now - masterDataCache.cacheTimestamp.species < masterDataCache.CACHE_DURATION
+      ) {
+        return {
+          success: true,
+          data: masterDataCache.species,
+        };
+      }
+
+      const response = await fetch(`${GAUSHALA_SERVICE_URL}/api/v1/gaushala/master/species`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(localStorage.getItem('saubhagya_jwt_token') && {
+            Authorization: `Bearer ${localStorage.getItem('saubhagya_jwt_token')}`
+          }),
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        return {
+          success: false,
+          error: error.message || `HTTP error! status: ${response.status}`,
+        };
+      }
+
+      const data = await response.json();
+
+      // Update cache
+      masterDataCache.species = data;
+      masterDataCache.cacheTimestamp.species = now;
+
+      return {
+        success: true,
+        data,
+      };
+    } catch (error) {
+      console.error('Get all species failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+      };
+    }
+  },
+
+  /**
+   * Get all genders with caching
+   */
+  async getAllGenders(forceRefresh: boolean = false): Promise<ApiResponse<Gender[]>> {
+    try {
+      // Check cache first
+      const now = Date.now();
+      if (
+        !forceRefresh &&
+        masterDataCache.genders &&
+        now - masterDataCache.cacheTimestamp.genders < masterDataCache.CACHE_DURATION
+      ) {
+        return {
+          success: true,
+          data: masterDataCache.genders,
+        };
+      }
+
+      const response = await fetch(`${GAUSHALA_SERVICE_URL}/api/v1/gaushala/master/genders`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(localStorage.getItem('saubhagya_jwt_token') && {
+            Authorization: `Bearer ${localStorage.getItem('saubhagya_jwt_token')}`
+          }),
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        return {
+          success: false,
+          error: error.message || `HTTP error! status: ${response.status}`,
+        };
+      }
+
+      const data = await response.json();
+
+      // Update cache
+      masterDataCache.genders = data;
+      masterDataCache.cacheTimestamp.genders = now;
+
+      return {
+        success: true,
+        data,
+      };
+    } catch (error) {
+      console.error('Get all genders failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+      };
+    }
+  },
+
+  /**
+   * Get all colors with caching
+   */
+  async getAllColors(forceRefresh: boolean = false): Promise<ApiResponse<Color[]>> {
+    try {
+      // Check cache first
+      const now = Date.now();
+      if (
+        !forceRefresh &&
+        masterDataCache.colors &&
+        now - masterDataCache.cacheTimestamp.colors < masterDataCache.CACHE_DURATION
+      ) {
+        return {
+          success: true,
+          data: masterDataCache.colors,
+        };
+      }
+
+      const response = await fetch(`${GAUSHALA_SERVICE_URL}/api/v1/gaushala/master/colors`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(localStorage.getItem('saubhagya_jwt_token') && {
+            Authorization: `Bearer ${localStorage.getItem('saubhagya_jwt_token')}`
+          }),
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        return {
+          success: false,
+          error: error.message || `HTTP error! status: ${response.status}`,
+        };
+      }
+
+      const data = await response.json();
+
+      // Update cache
+      masterDataCache.colors = data;
+      masterDataCache.cacheTimestamp.colors = now;
+
+      return {
+        success: true,
+        data,
+      };
+    } catch (error) {
+      console.error('Get all colors failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+      };
+    }
+  },
+
+  /**
+   * Get all locations/gaushalas with caching
+   */
+  async getAllLocations(forceRefresh: boolean = false): Promise<ApiResponse<Location[]>> {
+    try {
+      // Check cache first
+      const now = Date.now();
+      if (
+        !forceRefresh &&
+        masterDataCache.locations &&
+        now - masterDataCache.cacheTimestamp.locations < masterDataCache.CACHE_DURATION
+      ) {
+        return {
+          success: true,
+          data: masterDataCache.locations,
+        };
+      }
+
+      const response = await fetch(`${GAUSHALA_SERVICE_URL}/api/v1/gaushala/master/villages`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(localStorage.getItem('saubhagya_jwt_token') && {
+            Authorization: `Bearer ${localStorage.getItem('saubhagya_jwt_token')}`
+          }),
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        return {
+          success: false,
+          error: error.message || `HTTP error! status: ${response.status}`,
+        };
+      }
+
+      const data = await response.json();
+
+      // Update cache
+      masterDataCache.locations = data;
+      masterDataCache.cacheTimestamp.locations = now;
+
+      return {
+        success: true,
+        data,
+      };
+    } catch (error) {
+      console.error('Get all locations failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+      };
+    }
+  },
+
+  /**
+   * Clear all master data cache
+   */
+  clearCache(): void {
+    masterDataCache.breeds = null;
+    masterDataCache.species = null;
+    masterDataCache.genders = null;
+    masterDataCache.colors = null;
+    masterDataCache.locations = null;
+    masterDataCache.cacheTimestamp = {
+      breeds: 0,
+      species: 0,
+      genders: 0,
+      colors: 0,
+      locations: 0,
+    };
+  },
+
+  /**
+   * Preload all master data - useful for initial app load
+   */
+  async preloadAll(): Promise<void> {
+    await Promise.all([
+      this.getAllBreeds(),
+      this.getAllSpecies(),
+      this.getAllGenders(),
+      this.getAllColors(),
+      this.getAllLocations(),
+    ]);
+  },
+};
+
+// Inventory Management Interfaces
+export interface Inventory {
+  id?: number;
+  itemName: string;
+  inventoryTypeId: number;
+  inventoryUnitId: number;
+  quantity: number;
+  reorderLevel: number;
+  supplier?: string;
+  gaushalaId: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface InventoryType {
+  id: number;
+  name: string;  // Backend field name
+  description?: string;
+}
+
+export interface InventoryUnit {
+  id: number;
+  unitName: string;
+  abbreviation?: string;
+}
+
+export interface StockTransaction {
+  id?: number;
+  inventoryId: number;
+  transactionType: 'IN' | 'OUT';
+  quantity: number;
+  transactionDate: string;
+  performedBy?: string;
+  notes?: string;
+}
+
+// Inventory API
+export const inventoryApi = {
+  async getAllInventory(page: number = 0, size: number = 20): Promise<ApiResponse<PagedResponse<Inventory>>> {
+    return apiCall<PagedResponse<Inventory>>(`/api/v1/gaushala/inventory?page=${page}&size=${size}`);
+  },
+
+  async getInventoryById(id: number): Promise<ApiResponse<Inventory>> {
+    return apiCall<Inventory>(`/api/v1/gaushala/inventory/${id}`);
+  },
+
+  async createInventory(inventory: Omit<Inventory, 'id' | 'createdAt' | 'updatedAt'>): Promise<ApiResponse<Inventory>> {
+    return apiCall<Inventory>(`/api/v1/gaushala/inventory`, {
+      method: 'POST',
+      body: JSON.stringify(inventory),
+    });
+  },
+
+  async updateInventory(id: number, updates: Partial<Inventory>): Promise<ApiResponse<Inventory>> {
+    return apiCall<Inventory>(`/api/v1/gaushala/inventory/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    });
+  },
+
+  async deleteInventory(id: number): Promise<ApiResponse<void>> {
+    return apiCall<void>(`/api/v1/gaushala/inventory/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async searchInventory(itemName: string): Promise<ApiResponse<Inventory[]>> {
+    return apiCall<Inventory[]>(`/api/v1/gaushala/inventory/search?itemName=${encodeURIComponent(itemName)}`);
+  },
+
+  async getStockHistory(inventoryId: number): Promise<ApiResponse<StockTransaction[]>> {
+    return apiCall<StockTransaction[]>(`/api/v1/gaushala/inventory/${inventoryId}/stock-history`);
+  },
+
+  async createStockTransaction(transaction: Omit<StockTransaction, 'id'>): Promise<ApiResponse<StockTransaction>> {
+    return apiCall<StockTransaction>(`/api/v1/gaushala/inventory/stock-transaction`, {
+      method: 'POST',
+      body: JSON.stringify(transaction),
+    });
+  },
+
+  async getInventoryTypes(): Promise<ApiResponse<InventoryType[]>> {
+    return apiCall<InventoryType[]>(`/api/v1/gaushala/master/inventory-types`);
+  },
+
+  async getInventoryUnits(): Promise<ApiResponse<InventoryUnit[]>> {
+    return apiCall<InventoryUnit[]>(`/api/v1/gaushala/inventory/units`);
+  },
+};
+
+// Shed Management Interfaces
+export interface Shed {
+  id?: number;
+  gaushalaId: number;
+  shedName: string;
+  shedNumber: string;
+  capacity: number;
+  currentOccupancy: number;
+  shedType?: string;
+  areaSqFt?: number;
+  ventilationType?: string;
+  flooringType?: string;
+  waterFacility?: boolean;
+  feedingFacility?: boolean;
+  status: string; // 'ACTIVE' | 'MAINTENANCE'
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ShedCapacity {
+  shedId: number;
+  shedName: string;
+  capacity: number;
+  currentOccupancy: number;
+  availableSpace: number;
+  occupancyPercentage: number;
+}
+
+// Shed API
+export const shedApi = {
+  async getAllSheds(page: number = 0, size: number = 20): Promise<ApiResponse<PagedResponse<Shed>>> {
+    return apiCall<PagedResponse<Shed>>(`/api/v1/gaushala/sheds?page=${page}&size=${size}`);
+  },
+
+  async getShedById(id: number): Promise<ApiResponse<Shed>> {
+    return apiCall<Shed>(`/api/v1/gaushala/sheds/${id}`);
+  },
+
+  async createShed(shed: Omit<Shed, 'id' | 'createdAt' | 'updatedAt'>): Promise<ApiResponse<Shed>> {
+    return apiCall<Shed>(`/api/v1/gaushala/sheds`, {
+      method: 'POST',
+      body: JSON.stringify(shed),
+    });
+  },
+
+  async updateShed(id: number, updates: Partial<Shed>): Promise<ApiResponse<Shed>> {
+    return apiCall<Shed>(`/api/v1/gaushala/sheds/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    });
+  },
+
+  async deleteShed(id: number): Promise<ApiResponse<void>> {
+    return apiCall<void>(`/api/v1/gaushala/sheds/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async getShedsByGaushala(gaushalaId: number): Promise<ApiResponse<Shed[]>> {
+    return apiCall<Shed[]>(`/api/v1/gaushala/sheds/gaushala/${gaushalaId}`);
+  },
+
+  async getShedsByStatus(status: string): Promise<ApiResponse<Shed[]>> {
+    return apiCall<Shed[]>(`/api/v1/gaushala/sheds/by-status?status=${status}`);
+  },
+
+  async getAvailableCapacity(gaushalaId: number): Promise<ApiResponse<number>> {
+    return apiCall<number>(`/api/v1/gaushala/sheds/gaushala/${gaushalaId}/available-capacity`);
+  },
+};
+
+// ============================================================================
+// MILK PRODUCTION API
+// ============================================================================
+
+export interface MilkRecord {
+  id?: number;
+  entryType?: string;
+  cowId?: string;
+  milkQuantity?: number;
+  fatPercentage?: number;
+  snf?: number;
+  notes?: string;
+  status?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface MilkProductionStats {
+  totalQuantity: number;
+  averageFatPercentage: number;
+  averageSnfPercentage: number;
+  recordCount: number;
+}
+
+export const milkProductionApi = {
+  async getAllMilkRecords(page: number = 0, size: number = 20): Promise<ApiResponse<PagedResponse<MilkRecord>>> {
+    return apiCall<PagedResponse<MilkRecord>>(`/api/v1/gaushala/milk-records?page=${page}&size=${size}`);
+  },
+
+  async getMilkRecordById(id: number): Promise<ApiResponse<MilkRecord>> {
+    return apiCall<MilkRecord>(`/api/v1/gaushala/milk-records/${id}`);
+  },
+
+  async getMilkRecordsByCow(cowId: string, page: number = 0, size: number = 20): Promise<ApiResponse<PagedResponse<MilkRecord>>> {
+    return apiCall<PagedResponse<MilkRecord>>(`/api/v1/gaushala/milk-records/cow/${cowId}?page=${page}&size=${size}`);
+  },
+
+  async createMilkRecord(data: MilkRecord): Promise<ApiResponse<MilkRecord>> {
+    return apiCall<MilkRecord>('/api/v1/gaushala/milk-records', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async updateMilkRecord(id: number, data: Partial<MilkRecord>): Promise<ApiResponse<MilkRecord>> {
+    return apiCall<MilkRecord>(`/api/v1/gaushala/milk-records/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async deleteMilkRecord(id: number): Promise<ApiResponse<void>> {
+    return apiCall<void>(`/api/v1/gaushala/milk-records/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async getTotalMilkQuantity(startDate: string, endDate: string): Promise<ApiResponse<number>> {
+    return apiCall<number>(`/api/v1/gaushala/milk-records/total-quantity?startDate=${startDate}&endDate=${endDate}`);
+  },
+
+  async getAverageFatPercentage(cowId: string): Promise<ApiResponse<number>> {
+    return apiCall<number>(`/api/v1/gaushala/milk-records/cow/${cowId}/avg-fat`);
+  },
+
+  async getMilkRecordsByDateRange(startDate: string, endDate: string, page: number = 0, size: number = 20): Promise<ApiResponse<PagedResponse<MilkRecord>>> {
+    return apiCall<PagedResponse<MilkRecord>>(`/api/v1/gaushala/milk-records/range?startDate=${startDate}&endDate=${endDate}&page=${page}&size=${size}`);
+  },
+
+  async getMilkProductionStats(gaushalaId: number, startDate?: string, endDate?: string): Promise<ApiResponse<MilkProductionStats>> {
+    let url = `/api/v1/gaushala/milk-records/stats?gaushalaId=${gaushalaId}`;
+    if (startDate) url += `&startDate=${startDate}`;
+    if (endDate) url += `&endDate=${endDate}`;
+    return apiCall<MilkProductionStats>(url);
+  },
+};
+
+// ============================================================================
+// HEALTH RECORDS API
+// ============================================================================
+
+export interface HealthRecord {
+  id?: number;
+  cattleId: number;
+  gaushalaId: number;
+  recordType: string; // 'VACCINATION' | 'TREATMENT' | 'CHECKUP' | 'SURGERY'
+  recordDate: string;
+  diagnosis?: string;
+  treatment?: string;
+  medications?: string;
+  vaccineName?: string;
+  vaccineManufacturer?: string;
+  nextVaccinationDate?: string;
+  nextCheckupDate?: string;
+  veterinarianName?: string;
+  veterinarianContact?: string;
+  cost?: number;
+  notes?: string;
+  status?: string; // 'SCHEDULED' | 'COMPLETED' | 'CANCELLED'
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export const healthRecordsApi = {
+  async getAllHealthRecords(page: number = 0, size: number = 20): Promise<ApiResponse<PagedResponse<HealthRecord>>> {
+    return apiCall<PagedResponse<HealthRecord>>(`/api/v1/gaushala/health-records?page=${page}&size=${size}`);
+  },
+
+  async getHealthRecordById(id: number): Promise<ApiResponse<HealthRecord>> {
+    return apiCall<HealthRecord>(`/api/v1/gaushala/health-records/${id}`);
+  },
+
+  async getHealthRecordsByCattle(cattleId: number): Promise<ApiResponse<HealthRecord[]>> {
+    return apiCall<HealthRecord[]>(`/api/v1/gaushala/health-records/cattle/${cattleId}`);
+  },
+
+  async createHealthRecord(data: HealthRecord): Promise<ApiResponse<HealthRecord>> {
+    return apiCall<HealthRecord>('/api/v1/gaushala/health-records', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async updateHealthRecord(id: number, data: Partial<HealthRecord>): Promise<ApiResponse<HealthRecord>> {
+    return apiCall<HealthRecord>(`/api/v1/gaushala/health-records/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async deleteHealthRecord(id: number): Promise<ApiResponse<void>> {
+    return apiCall<void>(`/api/v1/gaushala/health-records/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async getPendingVaccinations(): Promise<ApiResponse<HealthRecord[]>> {
+    return apiCall<HealthRecord[]>('/api/v1/gaushala/health-records/vaccinations/pending');
+  },
+
+  async getUpcomingCheckups(): Promise<ApiResponse<HealthRecord[]>> {
+    return apiCall<HealthRecord[]>('/api/v1/gaushala/health-records/checkups/upcoming');
+  },
+
+  async getHealthRecordsByDateRange(startDate: string, endDate: string): Promise<ApiResponse<HealthRecord[]>> {
+    return apiCall<HealthRecord[]>(`/api/v1/gaushala/health-records/range?startDate=${startDate}&endDate=${endDate}`);
+  },
+};
+
+// ============================================================================
+// RFID SCANS API
+// ============================================================================
+
+export interface RFIDScan {
+  id?: number;
+  tagIdHex: string;
+  cattleId?: number;
+  gaushalaId: number;
+  scanLocation?: string;
+  scanTimestamp: string;
+  scannerDeviceId?: string;
+  signalStrength?: number;
+  notes?: string;
+  createdAt?: string;
+}
+
+export interface RFIDScanStats {
+  totalScans: number;
+  uniqueTags: number;
+  lastScanTime: string;
+  averageScansPerDay: number;
+}
+
+export const rfidApi = {
+  async getAllScans(page: number = 0, size: number = 20): Promise<ApiResponse<PagedResponse<RFIDScan>>> {
+    return apiCall<PagedResponse<RFIDScan>>(`/api/v1/gaushala/rfid/scans?page=${page}&size=${size}`);
+  },
+
+  async getScanById(id: number): Promise<ApiResponse<RFIDScan>> {
+    return apiCall<RFIDScan>(`/api/v1/gaushala/rfid/scans/${id}`);
+  },
+
+  async getScansByTag(tagIdHex: string, page: number = 0, size: number = 20): Promise<ApiResponse<PagedResponse<RFIDScan>>> {
+    return apiCall<PagedResponse<RFIDScan>>(`/api/v1/gaushala/rfid/scans/tag/${tagIdHex}?page=${page}&size=${size}`);
+  },
+
+  async getScansByDateRange(startDate: string, endDate: string, page: number = 0, size: number = 20): Promise<ApiResponse<PagedResponse<RFIDScan>>> {
+    return apiCall<PagedResponse<RFIDScan>>(`/api/v1/gaushala/rfid/scans/range?startDate=${startDate}&endDate=${endDate}&page=${page}&size=${size}`);
+  },
+
+  async getLatestScanByTag(tagIdHex: string): Promise<ApiResponse<RFIDScan>> {
+    return apiCall<RFIDScan>(`/api/v1/gaushala/rfid/scans/tag/${tagIdHex}/latest`);
+  },
+
+  async getScanCountByTag(tagIdHex: string): Promise<ApiResponse<number>> {
+    return apiCall<number>(`/api/v1/gaushala/rfid/scans/tag/${tagIdHex}/count`);
+  },
+
+  async getScanStats(gaushalaId: number, startDate?: string, endDate?: string): Promise<ApiResponse<RFIDScanStats>> {
+    let url = `/api/v1/gaushala/rfid/scans/stats?gaushalaId=${gaushalaId}`;
+    if (startDate) url += `&startDate=${startDate}`;
+    if (endDate) url += `&endDate=${endDate}`;
+    return apiCall<RFIDScanStats>(url);
+  },
+
+  async createScan(data: RFIDScan): Promise<ApiResponse<RFIDScan>> {
+    return apiCall<RFIDScan>('/api/v1/gaushala/rfid/scans', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+};
+
 // Combined API export
 export const api = {
   dashboard: dashboardApi,
   cattle: cattleApi,
   transactions: transactionApi,
+  medicine: medicineApi,
+  foodHistory: foodHistoryApi,
+  inventory: inventoryApi,
+  sheds: shedApi,
+  milkProduction: milkProductionApi,
+  healthRecords: healthRecordsApi,
+  rfid: rfidApi,
+  masterData: masterDataApi,
 };
 
 // Legacy export for backward compatibility - maintain nested structure
@@ -423,6 +1705,14 @@ export const gauShalaApi = {
   cattle: cattleApi,
   dashboard: dashboardApi,
   transactions: transactionApi,
+  medicine: medicineApi,
+  foodHistory: foodHistoryApi,
+  inventory: inventoryApi,
+  sheds: shedApi,
+  milkProduction: milkProductionApi,
+  healthRecords: healthRecordsApi,
+  rfid: rfidApi,
+  masterData: masterDataApi,
 };
 
 export default api;

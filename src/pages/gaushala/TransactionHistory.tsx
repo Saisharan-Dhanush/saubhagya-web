@@ -23,7 +23,7 @@ import {
   FileText,
   BarChart3
 } from 'lucide-react';
-import { BiogasServiceClient } from '../../services/microservices/index';
+import { biogasService, type DungCollectionResponse } from '../../services/biogasService';
 
 interface LanguageContextType {
   language: 'hi' | 'en';
@@ -378,33 +378,52 @@ export default function TransactionHistory({ languageContext }: Props) {
     try {
       setLoading(true);
 
-      // Fetch transaction data from biogas service
-      const contributions = await BiogasServiceClient.getAllContributions();
+      // Fetch transaction data from biogas service - using dung collections API
+      const response = await biogasService.listDungCollections(
+        undefined, // clusterId - fetch all for now
+        undefined, // paymentStatus - fetch all
+        undefined, // startDate
+        undefined, // endDate
+        0, // page
+        100 // size - load more records
+      );
 
-      // Transform biogas service data to match transaction interface
-      const transformedTransactions = contributions.map((contrib: any) => ({
-        id: contrib.id || contrib.externalId,
-        cattleId: contrib.cattleId || 'N/A',
-        cattleName: contrib.cattleName || 'Unknown Cattle',
-        workerId: contrib.operatorUserId || 'unknown_worker',
-        workerName: contrib.operatorName || 'Unknown Worker',
-        digestorId: 'digestor_001',
-        digestorName: 'Main Digestor Unit',
-        weight: contrib.weightKg || 0,
-        quality: contrib.qualityGrade === 'PREMIUM' ? 9 : contrib.qualityGrade === 'STANDARD' ? 7 : 5,
-        amount: contrib.totalAmount || 0,
-        timestamp: contrib.contributionDate ? new Date(contrib.contributionDate).getTime() : Date.now(),
-        status: contrib.paymentStatus === 'COMPLETED' ? 'completed' : 'pending_payment',
+      if (!response.success || !response.data) {
+        console.error('Failed to fetch dung collections:', response.error);
+        setTransactions([]);
+        return;
+      }
+
+      // Transform backend DungCollectionResponse to frontend Transaction interface
+      const transformedTransactions = response.data.content.map((collection: DungCollectionResponse) => ({
+        id: collection.id,
+        cattleId: collection.gaushalaId?.toString() || 'N/A',
+        cattleName: `Gaushala ${collection.gaushalaId || 'Unknown'}`,
+        workerId: 'unknown_worker', // Not in DungCollectionResponse
+        workerName: 'Collection Worker',
+        digestorId: collection.clusterId || 'digestor_001',
+        digestorName: `Cluster ${collection.clusterId?.substring(0, 8) || 'Unknown'}`,
+        weight: collection.weightKg || 0,
+        quality: collection.qualityGrade === 'A' ? 9 : collection.qualityGrade === 'B' ? 7 : collection.qualityGrade === 'C' ? 5 : 3,
+        amount: collection.totalAmount || 0,
+        timestamp: collection.collectionDate ? new Date(collection.collectionDate).getTime() : Date.now(),
+        status: collection.paymentStatus === 'COMPLETED' ? 'completed' :
+                collection.paymentStatus === 'PROCESSING' ? 'processing' :
+                collection.paymentStatus === 'FAILED' ? 'failed' : 'pending_payment',
         location: {
-          latitude: contrib.gpsLatitude || 0,
-          longitude: contrib.gpsLongitude || 0,
-          address: `${contrib.gpsLatitude || 0}, ${contrib.gpsLongitude || 0}`
+          latitude: 0,
+          longitude: 0,
+          address: 'Location Not Available'
         },
-        paymentMethod: contrib.paymentMethod || 'Unknown',
-        moisture: contrib.moistureContent || 0,
-        rfidTag: contrib.rfidTag || '',
-        farmerName: contrib.farmer?.name || 'Unknown Farmer',
-        notes: contrib.remarks || ''
+        paymentMethod: collection.paymentMethod || 'Unknown',
+        moisture: 0, // Not available in DungCollectionResponse
+        rfidTag: collection.transactionRef || '',
+        farmerName: 'Farmer Data Not Available',
+        notes: collection.qualityNotes || '',
+        qualityGrade: collection.qualityGrade || 'D',
+        moistureContent: 0,
+        organicMatter: 0,
+        sessionId: collection.transactionRef || ''
       }));
 
       setTransactions(transformedTransactions);

@@ -1,0 +1,385 @@
+/**
+ * View Cattle Page - Display detailed view of a specific cattle record
+ * Updated to use real API and master data for field display
+ */
+
+import { useState, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import {
+  ArrowLeft,
+  Calendar,
+  FileText,
+  Edit,
+  Trash2,
+  User,
+  Home,
+  Ruler,
+  Baby,
+  Globe,
+  Settings,
+  Activity,
+  Scan
+} from 'lucide-react';
+import {
+  cattleApi,
+  masterDataApi,
+  calculateAgeFromDob,
+  type Cattle,
+  type Breed,
+  type Species,
+  type Gender,
+  type Color,
+  type Location
+} from '../../services/gaushala/api';
+
+export default function ViewCattle() {
+  const navigate = useNavigate();
+  const { id } = useParams<{ id: string }>();
+  const [record, setRecord] = useState<Cattle | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Master data for lookups
+  const [breeds, setBreeds] = useState<Breed[]>([]);
+  const [species, setSpecies] = useState<Species[]>([]);
+  const [genders, setGenders] = useState<Gender[]>([]);
+  const [colors, setColors] = useState<Color[]>([]);
+  const [locations, setLocations] = useState<Location[]>([]);
+
+  /**
+   * Helper functions to get master data names by ID
+   */
+  const getBreedName = (breedId: number): string => {
+    const breed = breeds.find(b => b.id === breedId);
+    return breed?.name || `Breed #${breedId}`;
+  };
+
+  const getSpeciesName = (speciesId: number): string => {
+    const sp = species.find(s => s.id === speciesId);
+    return sp?.name || `Species #${speciesId}`;
+  };
+
+  const getGenderName = (genderId: number): string => {
+    const gender = genders.find(g => g.id === genderId);
+    return gender?.name || `Gender #${genderId}`;
+  };
+
+  const getColorName = (colorId: number): string => {
+    const color = colors.find(c => c.id === colorId);
+    return color?.name || `Color #${colorId}`;
+  };
+
+  const getGaushalaName = (gaushalaId: number): string => {
+    const location = locations.find(l => l.id === gaushalaId);
+    return location?.name || `Gaushala #${gaushalaId}`;
+  };
+
+  useEffect(() => {
+    const loadData = async () => {
+      if (!id) return;
+
+      setLoading(true);
+      setError(null);
+
+      try {
+        // Load master data and cattle record in parallel
+        const [breedsRes, speciesRes, gendersRes, colorsRes, locationsRes, cattleRes] = await Promise.all([
+          masterDataApi.getAllBreeds(),
+          masterDataApi.getAllSpecies(),
+          masterDataApi.getAllGenders(),
+          masterDataApi.getAllColors(),
+          masterDataApi.getAllLocations(),
+          cattleApi.getCattleById(parseInt(id))
+        ]);
+
+        if (breedsRes.success && breedsRes.data) setBreeds(breedsRes.data);
+        if (speciesRes.success && speciesRes.data) setSpecies(speciesRes.data);
+        if (gendersRes.success && gendersRes.data) setGenders(gendersRes.data);
+        if (colorsRes.success && colorsRes.data) setColors(colorsRes.data);
+        if (locationsRes.success && locationsRes.data) setLocations(locationsRes.data);
+
+        if (cattleRes.success && cattleRes.data) {
+          setRecord(cattleRes.data);
+        } else {
+          setError(cattleRes.error || 'Cattle record not found');
+        }
+      } catch (error) {
+        console.error('Error fetching cattle record:', error);
+        setError('Failed to load cattle details');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, [id]);
+
+  const handleEdit = () => {
+    navigate(`/gaushala/cattle/edit/${id}`);
+  };
+
+  const handleDelete = async () => {
+    if (!id || !window.confirm('Are you sure you want to delete this cattle record?')) {
+      return;
+    }
+
+    try {
+      const result = await cattleApi.deleteCattle(parseInt(id));
+
+      if (result.success) {
+        navigate('/gaushala/cattle');
+      } else {
+        alert(result.error || 'Failed to delete cattle record');
+      }
+    } catch (error) {
+      console.error('Error deleting cattle record:', error);
+      alert('Failed to delete cattle record');
+    }
+  };
+
+  const handleBack = () => {
+    navigate('/gaushala/cattle');
+  };
+
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return '-';
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+      });
+    } catch {
+      return dateString;
+    }
+  };
+
+  const formatDateTime = (dateString?: string) => {
+    if (!dateString) return '-';
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch {
+      return dateString;
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-64">
+        <div className="text-gray-500">Loading cattle details...</div>
+      </div>
+    );
+  }
+
+  if (error || !record) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Cattle Not Found</h1>
+            <p className="text-gray-600 mt-1">{error || 'The requested cattle record could not be found.'}</p>
+          </div>
+          <button
+            onClick={handleBack}
+            className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Cattle List
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const DetailField = ({ label, value, className = '' }: { label: string; value: string | number; className?: string }) => (
+    <div className={`space-y-1 ${className}`}>
+      <label className="block text-sm font-medium text-gray-600">{label}</label>
+      <div className="text-gray-900 font-medium">{value || '-'}</div>
+    </div>
+  );
+
+  const isFemale = genders.find(g => g.name.toLowerCase() === 'female' && g.id === record.genderId);
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Cattle Details</h1>
+          <p className="text-gray-600 mt-1">{record.name || 'No Name'} - {record.uniqueAnimalId}</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleEdit}
+            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+          >
+            <Edit className="h-4 w-4" />
+            Edit
+          </button>
+          <button
+            onClick={handleDelete}
+            className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+          >
+            <Trash2 className="h-4 w-4" />
+            Delete
+          </button>
+          <button
+            onClick={handleBack}
+            className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </button>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100">
+        <div className="p-6 border-b border-gray-100">
+          <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-3">
+            <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
+              <FileText className="h-5 w-5 text-blue-600" />
+            </div>
+            Cattle Information
+          </h2>
+        </div>
+
+        <div className="p-6">
+          {/* Basic Identification Section */}
+          <div className="mb-8">
+            <h3 className="text-md font-semibold text-gray-800 mb-4 pb-2 border-b border-gray-200 flex items-center gap-2">
+              <User className="h-5 w-5 text-blue-600" />
+              🐄 Basic Identification
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <DetailField label="Unique Animal ID" value={record.uniqueAnimalId} />
+              <DetailField label="Name" value={record.name || '-'} />
+              <DetailField label="Breed" value={getBreedName(record.breedId)} />
+              <DetailField label="Species" value={getSpeciesName(record.speciesId)} />
+              <DetailField label="Gender" value={getGenderName(record.genderId)} />
+              <DetailField label="Color" value={getColorName(record.colorId)} />
+              <DetailField label="Date of Birth" value={formatDate(record.dob)} />
+              <DetailField label="Age" value={`${calculateAgeFromDob(record.dob)} years`} />
+            </div>
+          </div>
+
+          {/* Gaushala Assignment Section */}
+          <div className="mb-8">
+            <h3 className="text-md font-semibold text-gray-800 mb-4 pb-2 border-b border-gray-200 flex items-center gap-2">
+              <Home className="h-5 w-5 text-green-600" />
+              🏠 Gaushala Assignment
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <DetailField label="Assigned Gaushala" value={getGaushalaName(record.gaushalaId)} />
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-600">Status</label>
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 ${record.isActive ? 'bg-green-500' : 'bg-gray-500'} rounded-full`}></div>
+                  <span className="text-gray-900 font-medium">{record.isActive ? 'Active' : 'Inactive'}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Physical Characteristics Section */}
+          <div className="mb-8">
+            <h3 className="text-md font-semibold text-gray-800 mb-4 pb-2 border-b border-gray-200 flex items-center gap-2">
+              <Ruler className="h-5 w-5 text-purple-600" />
+              📏 Physical Characteristics
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <DetailField label="Weight" value={record.weight ? `${record.weight} kg` : '-'} />
+              <DetailField label="Height" value={record.height ? `${record.height} cm` : '-'} />
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-600">RFID Tag Number</label>
+                <div className="flex items-center gap-2 text-gray-900 font-medium font-mono bg-gray-50 p-2 rounded">
+                  <Scan className="h-4 w-4 text-gray-400" />
+                  {record.rfidTagNo || '-'}
+                </div>
+              </div>
+              <DetailField label="Shed Number" value={record.shedNumber || '-'} />
+            </div>
+          </div>
+
+          {/* Health & Medical Records Section */}
+          <div className="mb-8">
+            <h3 className="text-md font-semibold text-gray-800 mb-4 pb-2 border-b border-gray-200 flex items-center gap-2">
+              <Activity className="h-5 w-5 text-red-600" />
+              🩺 Health & Medical Records
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <DetailField label="Health Status" value={record.healthStatus || '-'} className="md:col-span-2 lg:col-span-3" />
+              <DetailField label="Veterinarian Name" value={record.vetName || '-'} />
+              <DetailField label="Veterinarian Contact" value={record.vetContact || '-'} />
+            </div>
+          </div>
+
+          {/* Dung Collection Section */}
+          <div className="mb-8">
+            <h3 className="text-md font-semibold text-gray-800 mb-4 pb-2 border-b border-gray-200">
+              🌾 Dung Collection Statistics
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <DetailField label="Total Dung Collected" value={record.totalDungCollected ? `${record.totalDungCollected} kg` : '-'} />
+              <DetailField label="Last Dung Collection" value={record.lastDungCollection ? `${record.lastDungCollection} kg` : '-'} />
+            </div>
+          </div>
+
+          {/* Record Information Section */}
+          <div className="mb-8">
+            <h3 className="text-md font-semibold text-gray-800 mb-4 pb-2 border-b border-gray-200">
+              ℹ️ Record Information
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {record.id && <DetailField label="Record ID" value={record.id} />}
+              {record.createdAt && (
+                <DetailField label="Record Created" value={formatDateTime(record.createdAt)} />
+              )}
+              {record.updatedAt && (
+                <DetailField label="Last Updated" value={formatDateTime(record.updatedAt)} />
+              )}
+            </div>
+          </div>
+
+          {/* Photo Section */}
+          {record.photoUrl && (
+            <div className="mb-8">
+              <h3 className="text-md font-semibold text-gray-800 mb-4 pb-2 border-b border-gray-200">
+                📷 Cattle Photo
+              </h3>
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 max-w-md">
+                <img src={record.photoUrl} alt="Cattle Photo" className="max-h-64 max-w-full object-cover rounded" />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Action Buttons */}
+      <div className="flex justify-start gap-4">
+        <button
+          onClick={handleEdit}
+          className="flex items-center gap-2 px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+        >
+          <Edit className="h-4 w-4" />
+          Edit Record
+        </button>
+        <button
+          onClick={handleBack}
+          className="flex items-center gap-2 px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to List
+        </button>
+      </div>
+    </div>
+  );
+}

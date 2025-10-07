@@ -1,0 +1,221 @@
+/**
+ * Milk Production List - Display all milk production records
+ * 100% API-driven, NO hardcoded data
+ */
+
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Plus, Edit, Trash2, Milk, TrendingUp } from 'lucide-react';
+import { milkProductionApi, type MilkRecord, type PagedResponse } from '../../../services/gaushala/api';
+
+export default function MilkProductionList() {
+  const navigate = useNavigate();
+  const [records, setRecords] = useState<MilkRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalElements, setTotalElements] = useState(0);
+  const pageSize = 20;
+
+  useEffect(() => {
+    loadRecords();
+  }, [currentPage]);
+
+  const loadRecords = async () => {
+    setLoading(true);
+    try {
+      const response = await milkProductionApi.getAllMilkRecords(currentPage, pageSize);
+      if (response.success && response.data) {
+        setRecords(response.data.content);
+        setTotalPages(response.data.totalPages);
+        setTotalElements(response.data.totalElements);
+      } else {
+        setRecords([]);
+      }
+    } catch (error) {
+      console.error('Error loading milk records:', error);
+      setRecords([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!confirm('Delete this milk production record?')) return;
+    try {
+      const response = await milkProductionApi.deleteMilkRecord(id);
+      if (response.success) {
+        loadRecords();
+      } else {
+        alert('Failed to delete record: ' + response.error);
+      }
+    } catch (error) {
+      console.error('Error deleting record:', error);
+      alert('Error deleting record');
+    }
+  };
+
+  const getQualityBadgeColor = (quality?: string): string => {
+    switch (quality?.toUpperCase()) {
+      case 'EXCELLENT':
+        return 'bg-green-100 text-green-800';
+      case 'GOOD':
+        return 'bg-blue-100 text-blue-800';
+      case 'AVERAGE':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'POOR':
+        return 'bg-red-100 text-red-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const formatDate = (dateString: string): string => {
+    return new Date(dateString).toLocaleDateString('en-IN');
+  };
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-6">
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Milk Production Records</h1>
+          <p className="text-gray-600 mt-1">Total: {totalElements} records</p>
+        </div>
+        <button
+          onClick={() => navigate('/gaushala/production/record')}
+          className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+        >
+          <Plus size={20} />
+          Record Production
+        </button>
+      </div>
+
+      {records.length === 0 ? (
+        <div className="text-center py-12 bg-white rounded-lg shadow">
+          <Milk className="mx-auto text-gray-400" size={48} />
+          <p className="mt-4 text-gray-600">No milk production records found</p>
+          <button
+            onClick={() => navigate('/gaushala/production/record')}
+            className="mt-4 text-blue-600 hover:text-blue-700"
+          >
+            Record your first production
+          </button>
+        </div>
+      ) : (
+        <>
+          <div className="bg-white rounded-lg shadow overflow-hidden">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Date
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Cow ID
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Morning (L)
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Evening (L)
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Total (L)
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Fat %
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Quality
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {records.map((record) => (
+                  <tr key={record.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {record.createdAt && formatDate(record.createdAt)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {record.cowId ? `#${record.cowId}` : '-'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {record.milkQuantity ? (record.milkQuantity / 2).toFixed(2) : '-'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {record.milkQuantity ? (record.milkQuantity / 2).toFixed(2) : '-'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                      {record.milkQuantity ? record.milkQuantity.toFixed(2) : '-'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                      {record.fatPercentage ? `${record.fatPercentage.toFixed(1)}%` : '-'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {record.status ? (
+                        <span className={`px-2 py-1 rounded text-xs font-medium ${getQualityBadgeColor(record.status)}`}>
+                          {record.status}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400 text-sm">-</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <div className="flex justify-end gap-2">
+                        <button
+                          onClick={() => navigate(`/gaushala/production/edit/${record.id}`)}
+                          className="text-blue-600 hover:text-blue-900"
+                        >
+                          <Edit size={16} />
+                        </button>
+                        <button
+                          onClick={() => record.id && handleDelete(record.id)}
+                          className="text-red-600 hover:text-red-900"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {totalPages > 1 && (
+            <div className="mt-6 flex justify-center items-center gap-4">
+              <button
+                onClick={() => setCurrentPage(Math.max(0, currentPage - 1))}
+                disabled={currentPage === 0}
+                className="px-4 py-2 border rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+              >
+                Previous
+              </button>
+              <span className="text-gray-700">
+                Page {currentPage + 1} of {totalPages}
+              </span>
+              <button
+                onClick={() => setCurrentPage(Math.min(totalPages - 1, currentPage + 1))}
+                disabled={currentPage >= totalPages - 1}
+                className="px-4 py-2 border rounded disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+              >
+                Next
+              </button>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}

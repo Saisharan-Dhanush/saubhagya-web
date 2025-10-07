@@ -108,36 +108,39 @@ export interface DashboardStats {
 // Core API Service
 class ApiService {
   // Authentication APIs (Auth Service - Port 8081)
-  async login(email: string, password: string): Promise<ApiResponse<{ user: User; token: string }>> {
+  async login(phone: string, password: string): Promise<ApiResponse<{ user: User; token: string }>> {
     try {
-      // Step 1: Get OAuth2 token
-      const tokenResponse = await fetch('http://localhost:8081/auth/oauth2/token', {
+      // Direct login to auth service - send phone as-is
+      const loginResponse = await fetch('http://localhost:8081/auth-service/api/auth/login', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Authorization': 'Basic ' + btoa('saubhagya-web:web-app-secret-2024'),
+          'Content-Type': 'application/json',
         },
-        body: new URLSearchParams({
-          grant_type: 'client_credentials',
-          scope: 'iot-service commerce-service government-service reporting-service profile'
+        body: JSON.stringify({
+          phone,
+          password
         }),
       });
 
-      if (!tokenResponse.ok) {
-        throw new Error('OAuth2 authentication failed');
+      if (!loginResponse.ok) {
+        const errorData = await loginResponse.json();
+        throw new Error(errorData.message || 'Login failed');
       }
 
-      const tokenData = await tokenResponse.json();
-      const jwtToken = tokenData.access_token;
+      const responseData = await loginResponse.json();
 
-      // Step 2: Validate user credentials (mock for now - would use proper user endpoint)
+      // Extract user and token from response
+      // Response structure: { accessToken, refreshToken, userProfile: { id, phone, name, email, roles, permissions } }
+      const userProfile = responseData.userProfile || responseData.data || {};
       const user: User = {
-        id: '1',
-        email,
-        name: 'Admin User',
-        role: 'admin',
-        permissions: ['cattle:read', 'cattle:write', 'transactions:read', 'dashboard:read']
+        id: userProfile.id || userProfile.externalId || '1',
+        email: userProfile.email || `${phone}@saubhagya.com`,
+        name: userProfile.name || 'User',
+        role: userProfile.roles?.[0] || 'user',
+        permissions: userProfile.permissions || []
       };
+
+      const jwtToken = responseData.accessToken || responseData.data?.token || responseData.token;
 
       // Store token
       authManager.setToken(jwtToken);

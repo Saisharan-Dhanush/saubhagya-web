@@ -1,16 +1,26 @@
 /**
  * Add Cattle Page - Production-level cattle registration form
+ * Updated to use master data IDs and proper field mappings for backend integration
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Save, ArrowLeft, Scan, Upload, Camera, FileText,
-  User, Home, Activity, Baby, Globe, Settings, Ruler,
+  User, Activity, Baby, Globe, Settings, Ruler,
   AlertCircle, CheckCircle, Clock, Plus, X
 } from 'lucide-react';
-import { gauShalaApi } from '../../services/gaushala/api';
+import {
+  gauShalaApi,
+  calculateDobFromAge,
+  type Breed,
+  type Species,
+  type Gender,
+  type Color,
+  type Cattle
+} from '../../services/gaushala/api';
 
+import { InputField, SelectField, TextAreaField, FileUploadField } from './CattleFormFields';
 interface LanguageContextType {
   language: 'hi' | 'en';
   t: (key: string) => string;
@@ -23,19 +33,24 @@ interface AddCattleProps {
 export default function AddCattle({ languageContext }: AddCattleProps) {
   const navigate = useNavigate();
 
+  // Master data state
+  const [breeds, setBreeds] = useState<Breed[]>([]);
+  const [species, setSpecies] = useState<Species[]>([]);
+  const [genders, setGenders] = useState<Gender[]>([]);
+  const [colors, setColors] = useState<Color[]>([]);
+  const [masterDataLoading, setMasterDataLoading] = useState(true);
+
   const [formData, setFormData] = useState({
-    // Basic Identification
+    // Basic Identification - Updated to use IDs
     uniqueAnimalId: '',
     name: '',
-    breed: '',
-    species: 'cattle',
-    gender: '',
-    color: '',
-    dateOfBirth: '',
-    dateOfEntry: new Date().toISOString().split('T')[0],
+    breedId: 0,
+    speciesId: 0,
+    genderId: 0,
+    colorId: 0,
+    ageYears: 0,  // User enters age, will be converted to dob on submit
+    dateOfEntry: new Date().toISOString().split('T')[0],  // Store as date string for form input
 
-    // Gaushala Assignment
-    gaushala: '',
 
     // Health & Medical Records
     vaccinationStatus: '',
@@ -46,10 +61,10 @@ export default function AddCattle({ languageContext }: AddCattleProps) {
     veterinarianContact: '',
     medicalHistory: '',
 
-    // Physical Characteristics
+    // Physical Characteristics - Updated field name
     weight: '',
     hornStatus: '',
-    rfidTagNumber: '',
+    rfidTagNo: '',  // Changed from rfidTagNumber to match backend
     height: '',
     earTagNumber: '',
     microchipNumber: '',
@@ -86,28 +101,60 @@ export default function AddCattle({ languageContext }: AddCattleProps) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [activeSection, setActiveSection] = useState(0);
 
+  // Load master data on component mount
+  useEffect(() => {
+    const loadMasterData = async () => {
+      setMasterDataLoading(true);
+      try {
+        const [breedsRes, speciesRes, gendersRes, colorsRes] = await Promise.all([
+          gauShalaApi.masterData.getAllBreeds(),
+          gauShalaApi.masterData.getAllSpecies(),
+          gauShalaApi.masterData.getAllGenders(),
+          gauShalaApi.masterData.getAllColors(),
+        ]);
+
+        if (breedsRes.success && breedsRes.data) setBreeds(breedsRes.data);
+        if (speciesRes.success && speciesRes.data) setSpecies(speciesRes.data);
+        if (gendersRes.success && gendersRes.data) setGenders(gendersRes.data);
+        if (colorsRes.success && colorsRes.data) setColors(colorsRes.data);
+      } catch (error) {
+        console.error('Failed to load master data:', error);
+        setMessage({
+          type: 'error',
+          text: 'Failed to load reference data. Please refresh the page.'
+        });
+      } finally {
+        setMasterDataLoading(false);
+      }
+    };
+
+    loadMasterData();
+  }, []);
+
   const handleInputChange = useCallback((field: string, value: string | File | null) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
     }));
 
-    // Clear error for this field
-    if (errors[field]) {
-      setErrors(prev => ({
-        ...prev,
-        [field]: ''
-      }));
-    }
+    // Clear error for this field - use functional update to prevent input unfocus bug
+    setErrors(prev => {
+      if (prev[field]) {
+        const newErrors = { ...prev };
+        delete newErrors[field];
+        return newErrors;
+      }
+      return prev;
+    });
     setMessage(null);
-  }, [errors]);
+  }, []); // Empty dependency array - function is now stable
 
   const handleScanRfid = async () => {
     setIsScanning(true);
     try {
       const response = await gauShalaApi.cattle.scanRfid();
       if (response.success && response.data) {
-        handleInputChange('rfidTagNumber', response.data.rfidTag);
+        handleInputChange('rfidTagNo', response.data.rfidTag);
 
         if (response.data.cattleInfo) {
           setMessage({
@@ -134,17 +181,25 @@ export default function AddCattle({ languageContext }: AddCattleProps) {
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
 
-    // Required fields validation
+    // Required fields validation - Updated for ID fields
     if (!formData.uniqueAnimalId.trim()) newErrors.uniqueAnimalId = 'Unique Animal ID is required';
-    if (!formData.breed) newErrors.breed = 'Breed is required';
-    if (!formData.species) newErrors.species = 'Species is required';
-    if (!formData.gender) newErrors.gender = 'Gender is required';
+    if (formData.breedId === 0) newErrors.breedId = 'Breed is required';
+    if (formData.speciesId === 0) newErrors.speciesId = 'Species is required';
+    if (formData.genderId === 0) newErrors.genderId = 'Gender is required';
     if (!formData.dateOfEntry) newErrors.dateOfEntry = 'Date of Entry is required';
-    if (!formData.gaushala) newErrors.gaushala = 'Gaushala selection is required';
-    if (!formData.rfidTagNumber.trim()) newErrors.rfidTagNumber = 'RFID Tag Number is required';
+    if (!formData.rfidTagNo.trim()) newErrors.rfidTagNo = 'RFID Tag Number is required';
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
+  };
+
+  // Helper function to convert date string (YYYY-MM-DD) to LocalDateTime format (YYYY-MM-DDTHH:MM:SS)
+  const convertToLocalDateTime = (dateString: string): string | undefined => {
+    if (!dateString || dateString.trim() === '') return undefined;
+    // If already in ISO format, return as-is
+    if (dateString.includes('T')) return dateString;
+    // Convert date-only string to LocalDateTime at midnight
+    return `${dateString}T00:00:00`;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -162,23 +217,57 @@ export default function AddCattle({ languageContext }: AddCattleProps) {
     setMessage(null);
 
     try {
-      // Create cattle record
-      const cattleData = {
-        ...formData,
-        weight: formData.weight ? parseFloat(formData.weight) : null,
-        height: formData.height ? parseFloat(formData.height) : null,
-        milkYieldPerDay: formData.milkYieldPerDay ? parseFloat(formData.milkYieldPerDay) : null,
-        numberOfCalves: formData.numberOfCalves ? parseInt(formData.numberOfCalves) : null,
-        lactationNumber: formData.lactationNumber ? parseInt(formData.lactationNumber) : null,
+      // Transform formData to match Cattle interface for backend - COMPLETE FIELD MAPPING
+      const cattleData: Omit<Cattle, 'id' | 'createdAt' | 'updatedAt'> = {
+        uniqueAnimalId: formData.uniqueAnimalId,
+        name: formData.name || undefined,
+        breedId: formData.breedId,
+        speciesId: formData.speciesId,
+        genderId: formData.genderId,
+        colorId: formData.colorId,
+        dob: formData.ageYears > 0 ? calculateDobFromAge(formData.ageYears) : new Date().toISOString(),
+
+        // Physical Characteristics
+        weight: formData.weight ? parseFloat(formData.weight) : undefined,
+        height: formData.height ? parseFloat(formData.height) : undefined,
+        hornStatus: formData.hornStatus || undefined,
+        rfidTagNo: formData.rfidTagNo,
+        earTagNo: formData.earTagNumber || undefined,
+        microchipNo: formData.microchipNumber || undefined,
+        shedNumber: formData.shedNumber || undefined,
+
+        // Health & Medical Records
+        vaccinationStatus: formData.vaccinationStatus || undefined,
+        disability: formData.disability || undefined,
+        dewormingSchedule: formData.dewormingSchedule || undefined,
+        medicalHistory: formData.medicalHistory || undefined,
+        lastHealthCheckupDate: formData.lastHealthCheckup ? convertToLocalDateTime(formData.lastHealthCheckup) : undefined,
+        vetName: formData.veterinarianName || undefined,
+        vetContact: formData.veterinarianContact || undefined,
+
+        // Reproductive Details
+        milkingStatus: formData.milkingStatus || undefined,
+        lactationNumber: formData.lactationNumber ? parseInt(formData.lactationNumber) : undefined,
+        milkYieldPerDay: formData.milkYieldPerDay ? parseFloat(formData.milkYieldPerDay) : undefined,
+        lastCalvingDate: formData.lastCalvingDate ? convertToLocalDateTime(formData.lastCalvingDate) : undefined,
+        calvesCount: formData.numberOfCalves ? parseInt(formData.numberOfCalves) : undefined,
+        pregnancyStatus: formData.pregnancyStatus || undefined,
+
+        // Origin & Ownership
+        sourceId: formData.sourceOfAcquisition ? parseInt(formData.sourceOfAcquisition) : undefined,
+        dateOfAcquisition: formData.dateOfAcquisition ? convertToLocalDateTime(formData.dateOfAcquisition) : undefined,
+        previousOwner: formData.previousOwner || undefined,
+        ownershipId: formData.ownershipStatus ? parseInt(formData.ownershipStatus) : undefined,
+
+        // Shelter & Feeding
+        feedingSchedule: formData.feedingSchedule || undefined,
+        feedTypeId: formData.typeOfFeed ? parseInt(formData.typeOfFeed) : undefined,
+
+        // System fields
+        dateOfEntry: convertToLocalDateTime(formData.dateOfEntry),
         isActive: true,
         totalDungCollected: 0,
-        lastDungCollection: null,
-        photoUrl: '',
-        location: {
-          latitude: 23.7126,
-          longitude: 76.6566,
-          timestamp: new Date().toISOString(),
-        }
+        lastDungCollection: 0,
       };
 
       const response = await gauShalaApi.cattle.createCattle(cattleData);
@@ -247,13 +336,6 @@ export default function AddCattle({ languageContext }: AddCattleProps) {
       progress: 0
     },
     {
-      id: 'gaushala',
-      title: 'Gaushala',
-      icon: Home,
-      color: 'from-green-500 to-teal-600',
-      progress: 0
-    },
-    {
       id: 'physical',
       title: 'Physical Characteristics',
       icon: Ruler,
@@ -290,141 +372,6 @@ export default function AddCattle({ languageContext }: AddCattleProps) {
     }
   ];
 
-  const InputField = ({
-    label,
-    value,
-    onChange,
-    type = 'text',
-    placeholder,
-    required = false,
-    error,
-    className = '',
-    ...props
-  }: any) => (
-    <div className={`space-y-2 ${className}`}>
-      <label className="block text-sm font-medium text-gray-800">
-        {label} {required && <span className="text-red-500">*</span>}
-      </label>
-      <input
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className={`w-full px-3 py-2 bg-white border rounded-lg transition-all duration-200 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent hover:border-gray-400 ${
-          error ? 'border-red-300 bg-red-50' : 'border-gray-300'
-        }`}
-        {...props}
-      />
-      {error && (
-        <div className="flex items-center gap-2 text-sm text-red-600">
-          <AlertCircle className="h-4 w-4" />
-          {error}
-        </div>
-      )}
-    </div>
-  );
-
-  const SelectField = ({
-    label,
-    value,
-    onChange,
-    options,
-    placeholder,
-    required = false,
-    error,
-    className = ''
-  }: any) => (
-    <div className={`space-y-2 ${className}`}>
-      <label className="block text-sm font-medium text-gray-800">
-        {label} {required && <span className="text-red-500">*</span>}
-      </label>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={`w-full px-3 py-2 bg-white border rounded-lg transition-all duration-200 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent hover:border-gray-400 ${
-          error ? 'border-red-300 bg-red-50' : 'border-gray-300'
-        }`}
-      >
-        <option value="">{placeholder}</option>
-        {options.map((option: any) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-      {error && (
-        <div className="flex items-center gap-2 text-sm text-red-600">
-          <AlertCircle className="h-4 w-4" />
-          {error}
-        </div>
-      )}
-    </div>
-  );
-
-  const TextAreaField = ({
-    label,
-    value,
-    onChange,
-    placeholder,
-    rows = 3,
-    className = ''
-  }: any) => (
-    <div className={`space-y-2 ${className}`}>
-      <label className="block text-sm font-medium text-gray-800">
-        {label}
-      </label>
-      <textarea
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        rows={rows}
-        className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg transition-all duration-200 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent hover:border-gray-400 resize-none"
-      />
-    </div>
-  );
-
-  const FileUploadField = ({
-    label,
-    value,
-    onChange,
-    accept,
-    className = ''
-  }: any) => (
-    <div className={`space-y-2 ${className}`}>
-      <label className="block text-sm font-medium text-gray-800">
-        {label}
-      </label>
-      <div className="relative">
-        <input
-          type="file"
-          accept={accept}
-          onChange={(e) => onChange(e.target.files?.[0] || null)}
-          className="hidden"
-          id={label.replace(/\s+/g, '-').toLowerCase()}
-        />
-        <label
-          htmlFor={label.replace(/\s+/g, '-').toLowerCase()}
-          className="flex items-center justify-center w-full px-3 py-2 bg-white border-2 border-dashed border-gray-300 rounded-lg transition-all duration-200 cursor-pointer hover:border-blue-400 hover:bg-blue-50 group"
-        >
-          <div className="flex items-center gap-3 text-gray-600 group-hover:text-blue-600">
-            <Upload className="h-5 w-5" />
-            <span className="text-sm font-medium">
-              {value ? value.name : `Choose ${label.toLowerCase()}`}
-            </span>
-          </div>
-        </label>
-        {value && (
-          <button
-            type="button"
-            onClick={() => onChange(null)}
-            className="absolute top-2 right-2 p-1 bg-red-100 text-red-600 rounded-full hover:bg-red-200 transition-colors"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        )}
-      </div>
-    </div>
-  );
 
   return (
     <div className="p-6 space-y-6">
@@ -550,71 +497,62 @@ export default function AddCattle({ languageContext }: AddCattleProps) {
 
                   <SelectField
                     label="Breed"
-                    value={formData.breed}
-                    onChange={(value: string) => handleInputChange('breed', value)}
-                    placeholder="Select Breed"
+                    value={formData.breedId}
+                    onChange={(value: string) => handleInputChange('breedId', parseInt(value) || 0)}
+                    placeholder={masterDataLoading ? 'Loading breeds...' : 'Select Breed'}
                     required
-                    error={errors.breed}
-                    options={[
-                      { value: 'gir', label: 'Gir' },
-                      { value: 'sahiwal', label: 'Sahiwal' },
-                      { value: 'sindhi', label: 'Red Sindhi' },
-                      { value: 'tharparkar', label: 'Tharparkar' },
-                      { value: 'holstein', label: 'Holstein Friesian' },
-                      { value: 'jersey', label: 'Jersey' },
-                      { value: 'crossbred', label: 'Crossbred' },
-                      { value: 'indigenous', label: 'Indigenous' }
-                    ]}
+                    error={errors.breedId}
+                    options={breeds.filter(breed => breed && breed.id && breed.name).map(breed => ({
+                      value: breed.id.toString(),
+                      label: breed.name
+                    }))}
                   />
 
                   <SelectField
                     label="Species"
-                    value={formData.species}
-                    onChange={(value: string) => handleInputChange('species', value)}
-                    placeholder="Select Species"
+                    value={formData.speciesId}
+                    onChange={(value: string) => handleInputChange('speciesId', parseInt(value) || 0)}
+                    placeholder={masterDataLoading ? 'Loading species...' : 'Select Species'}
                     required
-                    error={errors.species}
-                    options={[
-                      { value: 'cattle', label: 'Cattle' },
-                      { value: 'buffalo', label: 'Buffalo' },
-                      { value: 'goat', label: 'Goat' },
-                      { value: 'sheep', label: 'Sheep' }
-                    ]}
+                    error={errors.speciesId}
+                    options={species.filter(s => s && s.id && s.name).map(s => ({
+                      value: s.id.toString(),
+                      label: s.name
+                    }))}
                   />
 
                   <SelectField
                     label="Gender"
-                    value={formData.gender}
-                    onChange={(value: string) => handleInputChange('gender', value)}
-                    placeholder="Select Gender"
+                    value={formData.genderId}
+                    onChange={(value: string) => handleInputChange('genderId', parseInt(value) || 0)}
+                    placeholder={masterDataLoading ? 'Loading genders...' : 'Select Gender'}
                     required
-                    error={errors.gender}
-                    options={[
-                      { value: 'male', label: 'Male' },
-                      { value: 'female', label: 'Female' }
-                    ]}
+                    error={errors.genderId}
+                    options={genders.filter(gender => gender && gender.id && gender.name).map(gender => ({
+                      value: gender.id.toString(),
+                      label: gender.name
+                    }))}
                   />
 
                   <SelectField
                     label="Color"
-                    value={formData.color}
-                    onChange={(value: string) => handleInputChange('color', value)}
-                    placeholder="Select Color"
-                    options={[
-                      { value: 'white', label: 'White' },
-                      { value: 'black', label: 'Black' },
-                      { value: 'brown', label: 'Brown' },
-                      { value: 'red', label: 'Red' },
-                      { value: 'grey', label: 'Grey' },
-                      { value: 'mixed', label: 'Mixed' }
-                    ]}
+                    value={formData.colorId}
+                    onChange={(value: string) => handleInputChange('colorId', parseInt(value) || 0)}
+                    placeholder={masterDataLoading ? 'Loading colors...' : 'Select Color'}
+                    error={errors.colorId}
+                    options={colors.filter(color => color && color.id && color.name).map(color => ({
+                      value: color.id.toString(),
+                      label: color.name
+                    }))}
                   />
 
                   <InputField
-                    label="Date of Birth"
-                    value={formData.dateOfBirth}
-                    onChange={(value: string) => handleInputChange('dateOfBirth', value)}
-                    type="date"
+                    label="Age (Years)"
+                    value={formData.ageYears}
+                    onChange={(value: string) => handleInputChange('ageYears', parseInt(value) || 0)}
+                    type="number"
+                    min="0"
+                    placeholder="Enter age in years"
                   />
 
                   <InputField
@@ -628,32 +566,6 @@ export default function AddCattle({ languageContext }: AddCattleProps) {
                 </div>
               </div>
 
-            {/* Gaushala */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-3">
-                <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
-                  <Home className="h-5 w-5 text-blue-600" />
-                </div>
-                🏠 Gaushala
-              </h2>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  <SelectField
-                    label="Select Gaushala"
-                    value={formData.gaushala}
-                    onChange={(value: string) => handleInputChange('gaushala', value)}
-                    placeholder="Select Gaushala"
-                    required
-                    error={errors.gaushala}
-                    options={[
-                      { value: 'main_gaushala', label: 'Main Gaushala' },
-                      { value: 'branch_gaushala_1', label: 'Branch Gaushala 1' },
-                      { value: 'branch_gaushala_2', label: 'Branch Gaushala 2' },
-                      { value: 'temporary_shelter', label: 'Temporary Shelter' }
-                    ]}
-                  />
-                </div>
-              </div>
 
             {/* Physical Characteristics */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
@@ -701,11 +613,11 @@ export default function AddCattle({ languageContext }: AddCattleProps) {
                     <div className="flex gap-3">
                       <input
                         type="text"
-                        value={formData.rfidTagNumber}
-                        onChange={(e) => handleInputChange('rfidTagNumber', e.target.value)}
+                        value={formData.rfidTagNo}
+                        onChange={(e) => handleInputChange('rfidTagNo', e.target.value)}
                         placeholder="Scan or enter RFID tag"
                         className={`flex-1 px-4 py-3.5 bg-white border-2 rounded-xl transition-all duration-200 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 hover:border-gray-300 ${
-                          errors.rfidTagNumber ? 'border-red-300 bg-red-50' : 'border-gray-200'
+                          errors.rfidTagNo ? 'border-red-300 bg-red-50' : 'border-gray-200'
                         }`}
                         required
                       />
@@ -719,10 +631,10 @@ export default function AddCattle({ languageContext }: AddCattleProps) {
                         {isScanning ? 'Scanning...' : 'Scan'}
                       </button>
                     </div>
-                    {errors.rfidTagNumber && (
+                    {errors.rfidTagNo && (
                       <div className="flex items-center gap-2 text-sm text-red-600 mt-2">
                         <AlertCircle className="h-4 w-4" />
-                        {errors.rfidTagNumber}
+                        {errors.rfidTagNo}
                       </div>
                     )}
                   </div>
@@ -810,7 +722,8 @@ export default function AddCattle({ languageContext }: AddCattleProps) {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
 
                 {/* Reproductive Details (Female only) */}
-                {formData.gender === 'female' && (
+                {/* Note: Check if genderId matches female gender ID from master data */}
+                {genders.find(g => g.name && g.name.toLowerCase() === 'female' && g.id === formData.genderId) && (
                   <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
                     <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-3">
                       <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">

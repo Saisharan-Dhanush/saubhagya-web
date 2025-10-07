@@ -1,24 +1,28 @@
 import React from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import BaseLayout from '@/components/layout/BaseLayout';
+import { useAuth } from '@/contexts/AuthContext';
 import { Dashboard } from './pages/Dashboard/Dashboard';
 import { UserManagement } from './pages/UserManagement/UserManagement';
 import { DeviceRegistry } from './pages/DeviceRegistry/DeviceRegistry';
 import { AuditLogs } from './pages/AuditLogs/AuditLogs';
 import { Reports } from './pages/Reports/Reports';
 import { Configuration } from './pages/Configuration/Configuration';
+import { Profile } from './pages/Profile/Profile';
 import {
   LayoutDashboard,
   Users,
   HardDrive,
   FileText,
   BarChart3,
-  Settings
+  Settings,
+  UserCircle
 } from 'lucide-react';
 
 const AdminModule: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
 
   const navigationItems = [
     {
@@ -62,6 +66,13 @@ const AdminModule: React.FC = () => {
       icon: <Settings className="w-5 h-5" />,
       onClick: () => navigate('/admin/config'),
       isActive: location.pathname === '/admin/config'
+    },
+    {
+      id: 'profile',
+      label: 'Profile',
+      icon: <UserCircle className="w-5 h-5" />,
+      onClick: () => navigate('/admin/profile'),
+      isActive: location.pathname === '/admin/profile'
     }
   ];
 
@@ -70,10 +81,11 @@ const AdminModule: React.FC = () => {
       moduleName="Admin"
       moduleSubtitle="Platform Management"
       navigationItems={navigationItems}
-      userInfo={{
-        name: "Admin User",
-        role: "System Administrator"
-      }}
+      userInfo={user ? {
+        name: user.name,
+        role: user.department || 'User',
+        avatar: undefined
+      } : undefined}
     >
       <Routes>
         <Route path="/" element={<Dashboard />} />
@@ -82,6 +94,7 @@ const AdminModule: React.FC = () => {
         <Route path="/audit" element={<AuditLogs />} />
         <Route path="/reports" element={<Reports />} />
         <Route path="/config" element={<Configuration />} />
+        <Route path="/profile" element={<Profile />} />
       </Routes>
     </BaseLayout>
   );

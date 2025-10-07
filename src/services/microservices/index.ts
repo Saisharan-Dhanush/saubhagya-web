@@ -21,7 +21,19 @@ export const SERVICE_REGISTRY: Record<string, ServiceConfig> = {
     name: 'Authentication Service',
     baseUrl: 'http://localhost:8081',
     port: 8081,
-    endpoints: ['/auth/api/v1/login', '/auth/api/v1/register', '/auth/api/v1/cattle/list', '/auth/api/v1/cattle/store', '/auth/oauth2/token'],
+    endpoints: [
+      '/auth/api/v1/login',
+      '/auth/api/v1/register',
+      '/auth/api/v1/cattle/list',
+      '/auth/api/v1/cattle/store',
+      '/auth/oauth2/token',
+      '/auth/api/auth/users',
+      '/auth/api/auth/users/{id}',
+      '/auth/api/auth/users/{id}/toggle-status',
+      '/auth/api/auth/users/{id}/permissions',
+      '/auth/api/auth/profile',
+      '/auth/api/auth/logout'
+    ],
     status: 'active'
   },
   'iot-service': {
@@ -56,7 +68,18 @@ export const SERVICE_REGISTRY: Record<string, ServiceConfig> = {
     name: 'Analytics & Reporting Service',
     baseUrl: 'http://localhost:8084',
     port: 8084,
-    endpoints: ['/api/v1/analytics', '/api/v1/reports', '/api/v1/dashboard'],
+    endpoints: [
+      '/api/v1/analytics',
+      '/api/v1/reports',
+      '/api/v1/dashboard',
+      '/system/metrics',
+      '/system/services',
+      '/system/performance',
+      '/audit/logs',
+      '/audit/export',
+      '/audit/stats/by-module',
+      '/audit/stats/by-action'
+    ],
     status: 'active'
   },
   'government-service': {
@@ -79,6 +102,30 @@ export class MicroservicesClient {
    */
   getService(serviceName: string): ServiceConfig | null {
     return this.serviceRegistry[serviceName] || null;
+  }
+
+  /**
+   * Handle 401 Unauthorized errors - clear tokens and redirect to login
+   */
+  private handle401Error(): void {
+    // Clear all tokens from localStorage
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('saubhagya_jwt_token');
+    localStorage.removeItem('user');
+    localStorage.removeItem('sessionStart');
+
+    // Get current path for redirect after re-login
+    const currentPath = window.location.pathname + window.location.search;
+    const redirectParam = currentPath !== '/' ? `?redirect=${encodeURIComponent(currentPath)}` : '';
+
+    // Import toast dynamically to avoid circular dependencies
+    import('sonner').then(({ toast }) => {
+      toast.error('Session expired. Please login again.');
+    });
+
+    // Redirect to login page with redirect parameter
+    window.location.href = `/login${redirectParam}`;
   }
 
   /**
@@ -105,10 +152,18 @@ export class MicroservicesClient {
       ...options.headers
     };
 
-    return fetch(url, {
+    const response = await fetch(url, {
       ...options,
       headers
     });
+
+    // Handle 401 Unauthorized errors
+    if (response.status === 401) {
+      this.handle401Error();
+      throw new Error('Unauthorized - Session expired');
+    }
+
+    return response;
   }
 
   /**
@@ -146,271 +201,146 @@ export const microservicesClient = new MicroservicesClient();
 /**
  * Service-specific clients for type safety
  */
+
 export const IoTServiceClient = {
   async getCattleList() {
-    // Call auth service directly without authentication headers since it works without auth
+    // Call gaushala service with JWT authentication
     try {
-      const response = await fetch('http://localhost:8081/auth/api/v1/cattle/list', {
+      // Get JWT token from localStorage
+      const token = localStorage.getItem('saubhagya_jwt_token');
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+      };
+
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const response = await fetch('http://localhost:8086/gaushala-service/api/v1/gaushala/cattle', {
         method: 'GET',
-        headers: {
-          'Content-Type': 'application/json'
-        }
+        headers
       });
+
+      // Handle 401 Unauthorized
+      if (response.status === 401) {
+        microservicesClient['handle401Error']();
+        throw new Error('Unauthorized - Session expired');
+      }
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
       const data = await response.json();
-      return data;
-    } catch (error) {
-      console.error('Error fetching cattle data, returning mock data:', error);
 
-      // Return comprehensive mock cattle data for demonstration
+      // Transform PagedResponse to expected format
+      if (data && data.content) {
+        return {
+          success: true,
+          data: data.content
+        };
+      }
+
       return {
         success: true,
-        data: [
-          {
-            id: 'cattle-001',
-            rfidTag: 'RFID001A2B3C',
-            name: 'गौमाता श्री',
-            breed: 'गिर',
-            age: 5,
-            weight: 450,
-            health: 'healthy',
-            owner: 'रामेश शर्मा',
-            ownerId: 'farmer_001',
-            currentStatus: 'IN',
-            location: {
-              latitude: 28.6139,
-              longitude: 77.2090,
-              timestamp: Date.now(),
-              address: 'गौशाला नंबर 1, नई दिल्ली'
-            },
-            totalDungCollected: 2850.5,
-            lastDungCollection: Date.now() - 86400000,
-            isActive: true,
-            photoUrl: 'https://via.placeholder.com/300x200/4CAF50/white?text=Gaumata+Sri',
-            medicalHistory: [
-              {
-                id: 'med_001',
-                date: Date.now() - 2592000000,
-                type: 'vaccination',
-                description: 'FMD Vaccination',
-                veterinarian: 'Dr. सुरेश वर्मा',
-                medication: 'FMD Vaccine',
-                nextCheckup: Date.now() + 2592000000
-              }
-            ],
-            createdAt: Date.now() - 31536000000,
-            updatedAt: Date.now()
-          },
-          {
-            id: 'cattle-002',
-            rfidTag: 'RFID002D4E5F',
-            name: 'कामधेनु',
-            breed: 'सिंधी',
-            age: 3,
-            weight: 380,
-            health: 'healthy',
-            owner: 'सुनीता देवी',
-            ownerId: 'farmer_002',
-            currentStatus: 'IN',
-            location: {
-              latitude: 28.6200,
-              longitude: 77.2100,
-              timestamp: Date.now(),
-              address: 'गौशाला नंबर 2, नई दिल्ली'
-            },
-            totalDungCollected: 1950.75,
-            lastDungCollection: Date.now() - 43200000,
-            isActive: true,
-            photoUrl: 'https://via.placeholder.com/300x200/2196F3/white?text=Kamdhenu',
-            medicalHistory: [
-              {
-                id: 'med_002',
-                date: Date.now() - 1296000000,
-                type: 'checkup',
-                description: 'Regular Health Checkup',
-                veterinarian: 'Dr. अनिल कुमार',
-                nextCheckup: Date.now() + 1296000000
-              }
-            ],
-            createdAt: Date.now() - 15768000000,
-            updatedAt: Date.now()
-          },
-          {
-            id: 'cattle-003',
-            rfidTag: 'RFID003G6H7I',
-            name: 'नंदिनी',
-            breed: 'होल्स्टीन',
-            age: 4,
-            weight: 520,
-            health: 'vaccination_due',
-            owner: 'राजेश गुप्ता',
-            ownerId: 'farmer_003',
-            currentStatus: 'OUT',
-            location: {
-              latitude: 28.6050,
-              longitude: 77.1950,
-              timestamp: Date.now(),
-              address: 'चारागाह क्षेत्र, नई दिल्ली'
-            },
-            totalDungCollected: 3200.25,
-            lastDungCollection: Date.now() - 172800000,
-            isActive: true,
-            photoUrl: 'https://via.placeholder.com/300x200/FF9800/white?text=Nandini',
-            medicalHistory: [
-              {
-                id: 'med_003',
-                date: Date.now() - 5184000000,
-                type: 'vaccination',
-                description: 'Brucellosis Vaccination',
-                veterinarian: 'Dr. प्रीति शर्मा',
-                medication: 'Brucella Vaccine',
-                nextCheckup: Date.now() + 604800000
-              }
-            ],
-            createdAt: Date.now() - 20736000000,
-            updatedAt: Date.now()
-          },
-          {
-            id: 'cattle-004',
-            rfidTag: 'RFID004J8K9L',
-            name: 'सुरभि',
-            breed: 'जर्सी',
-            age: 2,
-            weight: 320,
-            health: 'recovering',
-            owner: 'मनोज कुमार',
-            ownerId: 'farmer_004',
-            currentStatus: 'IN',
-            location: {
-              latitude: 28.6300,
-              longitude: 77.2200,
-              timestamp: Date.now(),
-              address: 'चिकित्सा केंद्र, नई दिल्ली'
-            },
-            totalDungCollected: 850.5,
-            lastDungCollection: Date.now() - 259200000,
-            isActive: true,
-            photoUrl: 'https://via.placeholder.com/300x200/E91E63/white?text=Surabhi',
-            medicalHistory: [
-              {
-                id: 'med_004',
-                date: Date.now() - 604800000,
-                type: 'treatment',
-                description: 'Digestive Issues Treatment',
-                veterinarian: 'Dr. राहुल त्रिपाठी',
-                medication: 'Digestive Enzymes',
-                nextCheckup: Date.now() + 1209600000
-              }
-            ],
-            createdAt: Date.now() - 10368000000,
-            updatedAt: Date.now()
-          },
-          {
-            id: 'cattle-005',
-            rfidTag: 'RFID005M0N1O',
-            name: 'अदिति',
-            breed: 'गिर',
-            age: 6,
-            weight: 480,
-            health: 'healthy',
-            owner: 'गीता शर्मा',
-            ownerId: 'farmer_005',
-            currentStatus: 'IN',
-            location: {
-              latitude: 28.6400,
-              longitude: 77.2300,
-              timestamp: Date.now(),
-              address: 'गौशाला नंबर 3, नई दिल्ली'
-            },
-            totalDungCollected: 4100.75,
-            lastDungCollection: Date.now() - 21600000,
-            isActive: true,
-            photoUrl: 'https://via.placeholder.com/300x200/9C27B0/white?text=Aditi',
-            medicalHistory: [
-              {
-                id: 'med_005',
-                date: Date.now() - 7776000000,
-                type: 'surgery',
-                description: 'Cesarean Section',
-                veterinarian: 'Dr. अमित पटेल',
-                medication: 'Post-surgery antibiotics',
-                nextCheckup: Date.now() + 2592000000
-              }
-            ],
-            createdAt: Date.now() - 41472000000,
-            updatedAt: Date.now()
-          },
-          {
-            id: 'cattle-006',
-            rfidTag: 'RFID006P2Q3R',
-            name: 'लक्ष्मी',
-            breed: 'सिंधी',
-            age: 4,
-            weight: 410,
-            health: 'sick',
-            owner: 'दीपक अग्रवाल',
-            ownerId: 'farmer_006',
-            currentStatus: 'IN',
-            location: {
-              latitude: 28.6100,
-              longitude: 77.2000,
-              timestamp: Date.now(),
-              address: 'अस्पताल वार्ड, नई दिल्ली'
-            },
-            totalDungCollected: 2350.25,
-            lastDungCollection: Date.now() - 432000000,
-            isActive: true,
-            photoUrl: 'https://via.placeholder.com/300x200/795548/white?text=Lakshmi',
-            medicalHistory: [
-              {
-                id: 'med_006',
-                date: Date.now() - 86400000,
-                type: 'treatment',
-                description: 'Fever and Loss of Appetite',
-                veterinarian: 'Dr. संजय वर्मा',
-                medication: 'Antibiotics and Vitamins',
-                nextCheckup: Date.now() + 604800000
-              }
-            ],
-            createdAt: Date.now() - 25920000000,
-            updatedAt: Date.now()
-          }
-        ]
+        data: data
+      };
+    } catch (error) {
+      // Import toast dynamically to show error to user
+      import('sonner').then(({ toast }) => {
+        toast.error('Unable to fetch cattle data. Please check if the Gaushala service is running.');
+      });
+
+      // Return empty array when API fails - NO MOCK DATA
+      return {
+        success: false,
+        data: []
       };
     }
   },
 
   async addCattle(cattleData: any) {
-    const response = await microservicesClient.callService('auth-service', '/auth/api/v1/cattle/store', {
+    const token = localStorage.getItem('saubhagya_jwt_token');
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch('http://localhost:8086/gaushala-service/api/v1/gaushala/cattle', {
       method: 'POST',
+      headers,
       body: JSON.stringify(cattleData)
     });
-    return response.json();
+
+    // Handle 401 Unauthorized
+    if (response.status === 401) {
+      microservicesClient['handle401Error']();
+      throw new Error('Unauthorized - Session expired');
+    }
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return { success: true, data: await response.json() };
   },
 
   async updateCattle(id: string, cattleData: any) {
-    // Add the ID to the request body as required by backend
-    const dataWithId = {
-      ...cattleData,
-      id: id
+    const token = localStorage.getItem('saubhagya_jwt_token');
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
     };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
 
-    const response = await microservicesClient.callService('auth-service', '/auth/api/v1/cattle/update', {
+    const response = await fetch(`http://localhost:8086/gaushala-service/api/v1/gaushala/cattle/${id}`, {
       method: 'PUT',
-      body: JSON.stringify(dataWithId)
+      headers,
+      body: JSON.stringify(cattleData)
     });
-    return response.json();
+
+    // Handle 401 Unauthorized
+    if (response.status === 401) {
+      microservicesClient['handle401Error']();
+      throw new Error('Unauthorized - Session expired');
+    }
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return { success: true, data: await response.json() };
   },
 
   async deleteCattle(id: string) {
-    const response = await microservicesClient.callService('auth-service', `/auth/api/v1/cattle/delete/${id}`, {
-      method: 'DELETE'
+    const token = localStorage.getItem('saubhagya_jwt_token');
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`http://localhost:8086/gaushala-service/api/v1/gaushala/cattle/${id}`, {
+      method: 'DELETE',
+      headers
     });
-    return response.json();
+
+    // Handle 401 Unauthorized
+    if (response.status === 401) {
+      microservicesClient['handle401Error']();
+      throw new Error('Unauthorized - Session expired');
+    }
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return { success: true };
   }
 };
 
@@ -431,7 +361,6 @@ export const BiogasServiceClient = {
         return data;
       } else {
         // Service unavailable, return mock success response
-        console.log('Biogas service unavailable, using fallback transaction creation');
         return {
           success: true,
           id: `COW_DUNG_TXN_${Date.now()}`,
@@ -440,7 +369,6 @@ export const BiogasServiceClient = {
         };
       }
     } catch (error) {
-      console.log('Biogas service error, using fallback transaction creation:', error);
       // Return mock success response for demonstration
       return {
         success: true,
@@ -468,66 +396,12 @@ export const BiogasServiceClient = {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
     } catch (error) {
-      console.log('Biogas service unavailable, showing user-specific mock transactions');
-
-      // Return mock data filtered for the current user (gaushala_user)
-      // This shows transactions that the current user created
-      return [
-        {
-          id: 'COW_DUNG_TXN_1758163536',
-          externalId: 'COW_DUNG_TXN_1758163536',
-          contributionDate: '2025-09-18T02:45:35.7132',
-          cattleId: 'cattle-010203',
-          cattleName: 'cattle-010203',
-          rfidTag: 'server_1758161786953_50ced630',
-          weightKg: 50.75,
-          ratePerKg: 12.00,
-          totalAmount: 609.00,
-          paymentMethod: 'UPI',
-          paymentStatus: 'COMPLETED',
-          qualityGrade: 'STANDARD',
-          moistureContent: 65.0,
-          gpsLatitude: 28.6139,
-          gpsLongitude: 77.2090,
-          operatorUserId: 'gaushala_user',
-          operatorName: 'Ravi Sharma',
-          operatorPhone: '+919876543210',
-          workflowStatus: 'CONTRIBUTION_RECORDED',
-          validationStatus: 'VALIDATED',
-          farmer: {
-            name: 'Gaushala User',
-            externalId: 'gaushala_user',
-            phone: '+911234567890'
-          }
-        },
-        {
-          id: 'COW_DUNG_TXN_1758163874',
-          externalId: 'COW_DUNG_TXN_1758163874',
-          contributionDate: '2025-09-18T02:51:14.20149',
-          cattleId: 'cattle-010203',
-          cattleName: 'cattle-010203',
-          rfidTag: 'server_1758161786953_50ced630',
-          weightKg: 35.25,
-          ratePerKg: 15.00,
-          totalAmount: 528.75,
-          paymentMethod: 'CASH',
-          paymentStatus: 'COMPLETED',
-          qualityGrade: 'PREMIUM',
-          moistureContent: 60.0,
-          gpsLatitude: 28.7041,
-          gpsLongitude: 77.1025,
-          operatorUserId: 'gaushala_user',
-          operatorName: 'Ravi Sharma',
-          operatorPhone: '+919876543210',
-          workflowStatus: 'CONTRIBUTION_RECORDED',
-          validationStatus: 'VALIDATED',
-          farmer: {
-            name: 'Gaushala User',
-            externalId: 'gaushala_user',
-            phone: '+911234567890'
-          }
-        }
-      ];
+      console.error('Failed to fetch biogas contributions:', error);
+      // Import toast dynamically to show error to user
+      import('sonner').then(({ toast }) => {
+        toast.error('Unable to fetch biogas contributions. Please check if the Biogas service is running.');
+      });
+      return [];
     }
   },
 

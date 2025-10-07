@@ -1,95 +1,95 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
-import { DollarSign, Receipt, Shield, Hash, CheckCircle, AlertCircle } from 'lucide-react';
-
-// Mock types for PaymentReconciliation
-interface Payment {
-  id: string;
-  farmerId: string;
-  amount: number;
-  type: string;
-  status: string;
-  createdAt: string;
-  transactionId?: string;
-  auditHash: string;
-  batchIds: string[];
-}
-
-interface Farmer {
-  id: string;
-  name: string;
-}
-
-// Mock data
-const payments: Payment[] = [
-  {
-    id: 'PAY-001',
-    farmerId: 'FARM-001',
-    amount: 412.25,
-    type: 'CASH',
-    status: 'COMPLETED',
-    createdAt: new Date().toISOString(),
-    transactionId: 'TXN-001',
-    auditHash: 'sha256:a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456',
-    batchIds: ['BATCH-001']
-  },
-  {
-    id: 'PAY-002',
-    farmerId: 'FARM-002',
-    amount: 325.80,
-    type: 'UPI',
-    status: 'PENDING',
-    createdAt: new Date(Date.now() - 86400000).toISOString(),
-    auditHash: 'sha256:b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef1234567',
-    batchIds: ['BATCH-002']
-  }
-];
-
-const farmers: Farmer[] = [
-  { id: 'FARM-001', name: 'राम कुमार' },
-  { id: 'FARM-002', name: 'श्याम यादव' }
-];
-
-const loading = {
-  payments: false
-};
+import { DollarSign, Receipt, Shield, Hash, CheckCircle, AlertCircle, Upload } from 'lucide-react';
+import biogasService, { ReconciliationResponse, ReconciliationReportResponse } from '../../services/biogasService';
 
 const PaymentReconciliation: React.FC = () => {
-  const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
+  const [reconciliations, setReconciliations] = useState<ReconciliationResponse[]>([]);
+  const [report, setReport] = useState<ReconciliationReportResponse | null>(null);
+  const [selectedReconciliation, setSelectedReconciliation] = useState<ReconciliationResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Get cluster ID from user context (hardcoded for now)
+  const clusterId = 'a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d';
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Fetch pending reconciliations
+      const reconciliationsResponse = await biogasService.getPendingReconciliations(clusterId, 0, 100);
+      if (reconciliationsResponse.success && reconciliationsResponse.data) {
+        setReconciliations(reconciliationsResponse.data.content);
+      } else {
+        setError(reconciliationsResponse.error || 'Failed to load reconciliations');
+      }
+
+      // Fetch reconciliation report
+      const reportResponse = await biogasService.getReconciliationReport(clusterId);
+      if (reportResponse.success && reportResponse.data) {
+        setReport(reportResponse.data);
+      }
+    } catch (err) {
+      console.error('Error fetching reconciliation data:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load data');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const getStatusColor = (status: string) => {
     const colors = {
       'PENDING': 'secondary',
-      'PROCESSING': 'outline',
-      'COMPLETED': 'default',
-      'FAILED': 'destructive'
+      'MATCHED': 'default',
+      'UNMATCHED': 'destructive',
+      'REVIEWING': 'outline'
     };
     return colors[status as keyof typeof colors] || 'outline';
   };
 
-  const getPaymentTypeIcon = (type: string) => {
-    switch (type) {
-      case 'CASH': return '💵';
-      case 'UPI': return '📱';
-      case 'BANK_TRANSFER': return '🏦';
-      case 'CHEQUE': return '📝';
-      default: return '💳';
+  const handleAutoMatch = async () => {
+    try {
+      setLoading(true);
+      const response = await biogasService.performAutoMatching(clusterId);
+      if (response.success) {
+        alert(`Auto-matching completed: ${response.data}`);
+        await fetchData(); // Refresh data
+      } else {
+        alert(`Auto-matching failed: ${response.error}`);
+      }
+    } catch (err) {
+      alert(`Error: ${err instanceof Error ? err.message : 'Auto-matching failed'}`);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const getFarmerName = (farmerId: string) => {
-    const farmer = farmers.find(f => f.id === farmerId);
-    return farmer?.name || `Farmer ${farmerId}`;
-  };
-
-  if (loading.payments) {
+  if (loading && !report) {
     return (
       <div className="flex items-center justify-center min-h-64">
         <div className="text-center">
           <DollarSign className="h-8 w-8 animate-spin mx-auto mb-4" />
-          <p>Loading payments...</p>
+          <p>Loading reconciliation data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error && !report) {
+    return (
+      <div className="flex items-center justify-center min-h-64">
+        <div className="text-center text-red-600">
+          <AlertCircle className="h-8 w-8 mx-auto mb-4" />
+          <p>Error: {error}</p>
+          <Button onClick={fetchData} className="mt-4">Retry</Button>
         </div>
       </div>
     );
@@ -100,19 +100,19 @@ const PaymentReconciliation: React.FC = () => {
       <div className="-mt-6">
         <h1 className="text-2xl font-bold text-gray-900">Payment Reconciliation</h1>
         <p className="text-gray-600 mt-1">
-          Track and reconcile farmer payments with immutable audit log
+          Track and reconcile bank transactions with dung collection records
         </p>
       </div>
 
-      {/* Payment Summary */}
+      {/* Reconciliation Summary */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center space-x-2">
               <Receipt className="h-5 w-5 text-green-600" />
               <div>
-                <p className="text-sm text-gray-600">Total Payments</p>
-                <p className="text-xl font-bold">{payments.length}</p>
+                <p className="text-sm text-gray-600">Total Entries</p>
+                <p className="text-xl font-bold">{report?.totalEntries || 0}</p>
               </div>
             </div>
           </CardContent>
@@ -123,10 +123,8 @@ const PaymentReconciliation: React.FC = () => {
             <div className="flex items-center space-x-2">
               <CheckCircle className="h-5 w-5 text-green-600" />
               <div>
-                <p className="text-sm text-gray-600">Completed</p>
-                <p className="text-xl font-bold">
-                  {payments.filter(p => p.status === 'COMPLETED').length}
-                </p>
+                <p className="text-sm text-gray-600">Matched</p>
+                <p className="text-xl font-bold">{report?.matchedCount || 0}</p>
               </div>
             </div>
           </CardContent>
@@ -137,10 +135,8 @@ const PaymentReconciliation: React.FC = () => {
             <div className="flex items-center space-x-2">
               <AlertCircle className="h-5 w-5 text-orange-600" />
               <div>
-                <p className="text-sm text-gray-600">Pending</p>
-                <p className="text-xl font-bold">
-                  {payments.filter(p => p.status === 'PENDING').length}
-                </p>
+                <p className="text-sm text-gray-600">Unmatched</p>
+                <p className="text-xl font-bold">{report?.unmatchedCount || 0}</p>
               </div>
             </div>
           </CardContent>
@@ -151,9 +147,9 @@ const PaymentReconciliation: React.FC = () => {
             <div className="flex items-center space-x-2">
               <DollarSign className="h-5 w-5 text-blue-600" />
               <div>
-                <p className="text-sm text-gray-600">Total Amount</p>
+                <p className="text-sm text-gray-600">Reconciliation %</p>
                 <p className="text-xl font-bold">
-                  ₹{payments.reduce((sum, p) => sum + p.amount, 0).toLocaleString()}
+                  {report?.reconciliationPercentage?.toFixed(1) || 0}%
                 </p>
               </div>
             </div>
@@ -161,161 +157,143 @@ const PaymentReconciliation: React.FC = () => {
         </Card>
       </div>
 
-      {/* Payments List & Details */}
+      {/* Action Buttons */}
+      <div className="flex gap-2">
+        <Button onClick={handleAutoMatch} disabled={loading}>
+          <CheckCircle className="h-4 w-4 mr-2" />
+          Auto-Match Transactions
+        </Button>
+        <Button variant="outline" disabled>
+          <Upload className="h-4 w-4 mr-2" />
+          Upload Bank Statement
+        </Button>
+      </div>
+
+      {/* Reconciliation Entries & Details */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Payments List */}
+        {/* Pending Reconciliations List */}
         <Card>
           <CardHeader>
-            <CardTitle>Payment Records</CardTitle>
+            <CardTitle>Pending Reconciliations ({reconciliations.length})</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3 max-h-96 overflow-y-auto">
-              {payments.map((payment) => (
-                <div
-                  key={payment.id}
-                  className={`border rounded-lg p-4 cursor-pointer transition-colors ${
-                    selectedPayment?.id === payment.id ? 'border-blue-500 bg-blue-50' : 'hover:bg-gray-50'
-                  }`}
-                  onClick={() => setSelectedPayment(payment)}
-                >
-                  <div className="flex justify-between items-start mb-2">
-                    <div>
-                      <h3 className="font-semibold">{getFarmerName(payment.farmerId)}</h3>
-                      <p className="text-sm text-gray-600">₹{payment.amount.toLocaleString()}</p>
+            {reconciliations.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <CheckCircle className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>No pending reconciliations</p>
+                <p className="text-sm mt-2">All transactions have been matched!</p>
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-96 overflow-y-auto">
+                {reconciliations.map((reconciliation) => (
+                  <div
+                    key={reconciliation.entryId}
+                    className={`border rounded-lg p-4 cursor-pointer transition-colors ${
+                      selectedReconciliation?.entryId === reconciliation.entryId
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'hover:bg-gray-50'
+                    }`}
+                    onClick={() => setSelectedReconciliation(reconciliation)}
+                  >
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <h3 className="font-semibold">Entry #{reconciliation.entryId.slice(0, 8)}</h3>
+                        <p className="text-sm text-gray-600">₹{reconciliation.amount.toLocaleString()}</p>
+                      </div>
+                      <div className="text-right">
+                        <Badge variant={getStatusColor(reconciliation.matchStatus) as any}>
+                          {reconciliation.matched ? 'MATCHED' : 'PENDING'}
+                        </Badge>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {new Date(reconciliation.transactionDate).toLocaleDateString()}
+                        </p>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <Badge variant={getStatusColor(payment.status) as any}>
-                        {payment.status}
-                      </Badge>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {getPaymentTypeIcon(payment.type)} {payment.type}
-                      </p>
+
+                    <div className="flex justify-between items-center text-xs text-gray-500">
+                      <span>Ref: {reconciliation.reference}</span>
+                      {reconciliation.dungTransactionId && (
+                        <span>TXN: {reconciliation.dungTransactionId.slice(0, 8)}</span>
+                      )}
                     </div>
                   </div>
-
-                  <div className="flex justify-between items-center text-xs text-gray-500">
-                    <span>#{payment.id}</span>
-                    <span>{new Date(payment.createdAt).toLocaleDateString()}</span>
-                  </div>
-
-                  {payment.transactionId && (
-                    <div className="mt-2 text-xs font-mono bg-gray-100 p-1 rounded">
-                      TXN: {payment.transactionId}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 
-        {/* Payment Details & Audit */}
+        {/* Reconciliation Details */}
         <Card>
           <CardHeader>
-            <CardTitle>Payment Details & Audit Trail</CardTitle>
+            <CardTitle>Reconciliation Details</CardTitle>
           </CardHeader>
           <CardContent>
-            {selectedPayment ? (
+            {selectedReconciliation ? (
               <div className="space-y-4">
-                {/* Payment Information */}
+                {/* Entry Information */}
                 <div className="border rounded-lg p-4 bg-gray-50">
-                  <h3 className="font-semibold mb-3">Payment Information</h3>
+                  <h3 className="font-semibold mb-3">Entry Information</h3>
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     <div>
-                      <span className="text-gray-600">Payment ID:</span>
-                      <p className="font-medium">{selectedPayment.id}</p>
+                      <span className="text-gray-600">Entry ID:</span>
+                      <p className="font-medium">{selectedReconciliation.entryId}</p>
                     </div>
                     <div>
                       <span className="text-gray-600">Amount:</span>
-                      <p className="font-medium">₹{selectedPayment.amount.toLocaleString()}</p>
+                      <p className="font-medium">₹{selectedReconciliation.amount.toLocaleString()}</p>
                     </div>
                     <div>
-                      <span className="text-gray-600">Farmer:</span>
-                      <p className="font-medium">{getFarmerName(selectedPayment.farmerId)}</p>
+                      <span className="text-gray-600">Reference:</span>
+                      <p className="font-medium">{selectedReconciliation.reference}</p>
                     </div>
                     <div>
-                      <span className="text-gray-600">Type:</span>
+                      <span className="text-gray-600">Date:</span>
                       <p className="font-medium">
-                        {getPaymentTypeIcon(selectedPayment.type)} {selectedPayment.type}
+                        {new Date(selectedReconciliation.transactionDate).toLocaleDateString()}
                       </p>
                     </div>
                     <div>
                       <span className="text-gray-600">Status:</span>
-                      <Badge variant={getStatusColor(selectedPayment.status) as any}>
-                        {selectedPayment.status}
+                      <Badge variant={getStatusColor(selectedReconciliation.matchStatus) as any}>
+                        {selectedReconciliation.matched ? 'MATCHED' : 'PENDING'}
                       </Badge>
-                    </div>
-                    <div>
-                      <span className="text-gray-600">Created:</span>
-                      <p className="font-medium">
-                        {new Date(selectedPayment.createdAt).toLocaleString()}
-                      </p>
                     </div>
                   </div>
 
-                  {selectedPayment.transactionId && (
+                  {selectedReconciliation.dungTransactionId && (
                     <div className="mt-3">
-                      <span className="text-gray-600">Transaction ID:</span>
+                      <span className="text-gray-600">Matched Transaction:</span>
                       <p className="font-mono text-sm bg-white p-2 rounded border">
-                        {selectedPayment.transactionId}
+                        {selectedReconciliation.dungTransactionId}
+                      </p>
+                    </div>
+                  )}
+
+                  {selectedReconciliation.matchNotes && (
+                    <div className="mt-3">
+                      <span className="text-gray-600">Match Notes:</span>
+                      <p className="text-sm bg-white p-2 rounded border">
+                        {selectedReconciliation.matchNotes}
                       </p>
                     </div>
                   )}
                 </div>
 
-                {/* Audit Hash */}
-                <div className="border rounded-lg p-4 bg-green-50">
-                  <h3 className="font-semibold mb-3 flex items-center space-x-2">
-                    <Shield className="h-4 w-4" />
-                    <span>Audit Hash (Immutable)</span>
-                  </h3>
-                  <div className="flex items-center space-x-2">
-                    <Hash className="h-4 w-4 text-gray-500" />
-                    <p className="font-mono text-xs bg-white p-2 rounded border flex-1">
-                      {selectedPayment.auditHash}
-                    </p>
-                  </div>
-                  <p className="text-xs text-gray-600 mt-2">
-                    This cryptographic hash ensures payment record integrity and prevents tampering.
-                  </p>
-                </div>
-
-                {/* Related Batches */}
-                <div className="border rounded-lg p-4">
-                  <h3 className="font-semibold mb-3">Related Batches</h3>
-                  <div className="space-y-2">
-                    {selectedPayment.batchIds.map((batchId) => (
-                      <div key={batchId} className="flex items-center justify-between text-sm">
-                        <span>Batch {batchId}</span>
-                        <Badge variant="outline">Linked</Badge>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
                 {/* Actions */}
-                {selectedPayment.status === 'PENDING' && (
+                {!selectedReconciliation.matched && (
                   <div className="space-y-2">
-                    <Button className="w-full">
+                    <Button className="w-full" variant="outline">
                       <CheckCircle className="h-4 w-4 mr-2" />
-                      Mark as Completed
-                    </Button>
-                    <Button variant="outline" className="w-full">
-                      Process Payment
+                      Manual Match
                     </Button>
                   </div>
-                )}
-
-                {selectedPayment.status === 'FAILED' && (
-                  <Button variant="outline" className="w-full">
-                    Retry Payment
-                  </Button>
                 )}
               </div>
             ) : (
               <div className="text-center py-12 text-gray-500">
-                <DollarSign className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>Select a payment to view details and audit trail</p>
+                <Receipt className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p>Select a reconciliation entry to view details</p>
               </div>
             )}
           </CardContent>

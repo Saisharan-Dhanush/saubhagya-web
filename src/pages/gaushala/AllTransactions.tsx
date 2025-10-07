@@ -20,7 +20,7 @@ import {
   BarChart3,
   Users
 } from 'lucide-react';
-import { BiogasServiceClient } from '../../services/microservices';
+import { biogasService, type DungCollectionResponse } from '../../services/biogasService';
 
 interface Contribution {
   id: string;
@@ -110,6 +110,8 @@ export default function AllTransactions({ onClose }: Props) {
   const [workerFilter, setWorkerFilter] = useState('');
   const [selectedContribution, setSelectedContribution] = useState<Contribution | null>(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [entriesPerPage, setEntriesPerPage] = useState(20);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const t = (key: string): string => {
     return translations[language][key as keyof typeof translations['en']] || key;
@@ -123,17 +125,61 @@ export default function AllTransactions({ onClose }: Props) {
     applyFilters();
   }, [contributions, searchTerm, paymentFilter, qualityFilter, workerFilter]);
 
+  // Pagination calculation
+  const totalEntries = filteredContributions.length;
+  const totalPages = Math.ceil(totalEntries / entriesPerPage);
+  const startIndex = (currentPage - 1) * entriesPerPage;
+  const endIndex = Math.min(startIndex + entriesPerPage, totalEntries);
+  const currentData = filteredContributions.slice(startIndex, endIndex);
+
   const loadAllContributions = async () => {
     try {
       setLoading(true);
-      const response = await BiogasServiceClient.getAllContributions();
 
-      if (response && Array.isArray(response)) {
-        setContributions(response);
-      } else {
-        console.error('Invalid response format:', response);
+      // Fetch dung collections from biogas service
+      const response = await biogasService.listDungCollections(
+        undefined, // clusterId - fetch all
+        undefined, // paymentStatus - fetch all
+        undefined, // startDate
+        undefined, // endDate
+        0, // page
+        1000 // size - fetch a large batch
+      );
+
+      if (!response.success || !response.data) {
+        console.error('Failed to fetch dung collections:', response.error);
         setContributions([]);
+        return;
       }
+
+      // Transform DungCollectionResponse to Contribution format
+      const transformedContributions = response.data.content.map((collection: DungCollectionResponse): Contribution => ({
+        id: collection.id,
+        externalId: collection.transactionRef || collection.id,
+        contributionDate: collection.collectionDate,
+        weightKg: collection.weightKg,
+        ratePerKg: collection.ratePerKg,
+        totalAmount: collection.totalAmount,
+        paymentMethod: collection.paymentMethod as 'UPI' | 'CASH' | 'NEFT' | 'AEPS',
+        paymentStatus: collection.paymentStatus,
+        qualityGrade: collection.qualityGrade === 'A' ? 'PREMIUM' : collection.qualityGrade === 'B' ? 'STANDARD' : 'BASIC',
+        moistureContent: 0, // Not available in DungCollectionResponse
+        gpsLatitude: 0,
+        gpsLongitude: 0,
+        workflowStatus: collection.transactionStatus,
+        validationStatus: collection.assignedToBatch ? 'ASSIGNED' : 'PENDING',
+        notes: collection.qualityNotes,
+        operatorUserId: undefined,
+        operatorName: 'Collection Worker',
+        operatorPhone: undefined,
+        farmer: {
+          name: `Gaushala ${collection.gaushalaId || 'Unknown'}`,
+          externalId: collection.gaushalaId?.toString() || 'unknown',
+          phone: undefined
+        }
+      }));
+
+      setContributions(transformedContributions);
     } catch (error) {
       console.error('Error loading contributions:', error);
       setContributions([]);
@@ -171,6 +217,7 @@ export default function AllTransactions({ onClose }: Props) {
     }
 
     setFilteredContributions(filtered);
+    setCurrentPage(1);
   };
 
   const calculateSummary = () => {
@@ -398,6 +445,27 @@ export default function AllTransactions({ onClose }: Props) {
           </div>
         </div>
 
+        {/* Pagination Controls */}
+        <div className="bg-white rounded-xl shadow-sm p-4 mb-4">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-600">Show</span>
+              <select
+                value={entriesPerPage}
+                onChange={(e) => { setEntriesPerPage(Number(e.target.value)); setCurrentPage(1); }}
+                className="px-3 py-1 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+              <span className="text-sm text-gray-600">entries</span>
+            </div>
+          </div>
+        </div>
+
+
         {/* Transactions Table */}
         <div className="bg-white rounded-xl shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
@@ -417,7 +485,7 @@ export default function AllTransactions({ onClose }: Props) {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {filteredContributions.map((contribution) => (
+                {currentData.map((contribution) => (
                   <tr key={contribution.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       <div className="flex items-center">
@@ -476,6 +544,35 @@ export default function AllTransactions({ onClose }: Props) {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination Footer */}
+          <div className="px-6 py-4 border-t border-gray-100">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="text-sm text-gray-700">
+                Showing {startIndex + 1} to {endIndex} of {totalEntries} entries
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Previous
+                </button>
+                <span className="px-3 py-1 text-sm bg-blue-600 text-white rounded">
+                  {currentPage}
+                </span>
+                <button
+                  onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </div>
+
 
           {filteredContributions.length === 0 && (
             <div className="text-center py-12">

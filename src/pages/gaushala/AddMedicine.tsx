@@ -1,23 +1,23 @@
 /**
- * Add Medicine Page - Create new medicine/health records
+ * Add Medicine Page - Create new medicine records
+ * Mapped to backend Medicine.java entity with exact field names
  */
 
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Save, ArrowLeft, Calendar, FileText, Heart } from 'lucide-react';
+import { Save, ArrowLeft, Calendar, Pill } from 'lucide-react';
+import { medicineApi, type Medicine } from '../../services/gaushala/api';
 
 interface MedicineFormData {
-  batchName: string;
-  shedNo: string;
-  startDate: string;
-  endDate: string;
-  identifyDate: string;
-  nextFollowUpDate: string;
-  doctor: string;
-  regularDose: string;
-  comments: string;
-  specialDose: string;
-  version: string;
+  name: string;
+  description: string;
+  dosage: string;
+  unit: string;
+  quantity: number;
+  expiryDate: string;
+  manufacturer: string;
+  batchNumber: string;
+  purpose: string;
 }
 
 export default function AddMedicine() {
@@ -26,22 +26,20 @@ export default function AddMedicine() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const [formData, setFormData] = useState<MedicineFormData>({
-    batchName: '',
-    shedNo: '',
-    startDate: '',
-    endDate: '',
-    identifyDate: '',
-    nextFollowUpDate: '',
-    doctor: '',
-    regularDose: '',
-    comments: '',
-    specialDose: '',
-    version: ''
+    name: '',
+    description: '',
+    dosage: '',
+    unit: 'mg',
+    quantity: 0,
+    expiryDate: '',
+    manufacturer: '',
+    batchNumber: '',
+    purpose: ''
   });
 
   const [errors, setErrors] = useState<Partial<MedicineFormData>>({});
 
-  const handleInputChange = (field: keyof MedicineFormData, value: string) => {
+  const handleInputChange = (field: keyof MedicineFormData, value: string | number) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
@@ -49,31 +47,21 @@ export default function AddMedicine() {
   };
 
   const validateForm = (): boolean => {
-    const newErrors: Partial<MedicineFormData> = {};
+    const newErrors: Partial<Record<keyof MedicineFormData, string>> = {};
 
-    if (!formData.batchName.trim()) newErrors.batchName = 'Batch Name is required';
-    if (!formData.shedNo.trim()) newErrors.shedNo = 'Shed No is required';
-    if (!formData.startDate.trim()) newErrors.startDate = 'Start Date is required';
-    if (!formData.endDate.trim()) newErrors.endDate = 'End Date is required';
-    if (!formData.identifyDate.trim()) newErrors.identifyDate = 'Identify Date is required';
-    if (!formData.nextFollowUpDate.trim()) newErrors.nextFollowUpDate = 'Next Follow Up Date is required';
-    if (!formData.doctor.trim()) newErrors.doctor = 'Doctor is required';
-    if (!formData.regularDose.trim()) newErrors.regularDose = 'Regular Dose is required';
+    if (!formData.name.trim()) newErrors.name = 'Medicine Name is required';
+    if (!formData.dosage.trim()) newErrors.dosage = 'Dosage is required';
+    if (!formData.unit.trim()) newErrors.unit = 'Unit is required';
+    if (formData.quantity <= 0) newErrors.quantity = 'Quantity must be greater than 0';
+    if (!formData.expiryDate.trim()) newErrors.expiryDate = 'Expiry Date is required';
 
-    // Date validation
-    if (formData.startDate && formData.endDate) {
-      const startDate = new Date(formData.startDate);
-      const endDate = new Date(formData.endDate);
-      if (endDate < startDate) {
-        newErrors.endDate = 'End Date cannot be earlier than Start Date';
-      }
-    }
-
-    if (formData.identifyDate && formData.nextFollowUpDate) {
-      const identifyDate = new Date(formData.identifyDate);
-      const followUpDate = new Date(formData.nextFollowUpDate);
-      if (followUpDate < identifyDate) {
-        newErrors.nextFollowUpDate = 'Follow Up Date cannot be earlier than Identify Date';
+    // Date validation - expiry date should be in the future
+    if (formData.expiryDate) {
+      const expiryDate = new Date(formData.expiryDate);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (expiryDate < today) {
+        newErrors.expiryDate = 'Expiry Date should be in the future';
       }
     }
 
@@ -96,21 +84,37 @@ export default function AddMedicine() {
     setMessage(null);
 
     try {
-      // TODO: Replace with actual API call
-      console.log('Creating medicine record:', formData);
+      // Convert date to ISO format for backend LocalDateTime
+      const medicineData: Omit<Medicine, 'id' | 'createdAt' | 'updatedAt'> = {
+        name: formData.name,
+        description: formData.description || undefined,
+        dosage: formData.dosage,
+        unit: formData.unit,
+        quantity: formData.quantity,
+        expiryDate: new Date(formData.expiryDate).toISOString(),
+        manufacturer: formData.manufacturer || undefined,
+        batchNumber: formData.batchNumber || undefined,
+        purpose: formData.purpose || undefined
+      };
 
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const result = await medicineApi.createMedicine(medicineData);
 
-      setMessage({
-        type: 'success',
-        text: 'Medicine record created successfully!'
-      });
+      if (result.success) {
+        setMessage({
+          type: 'success',
+          text: 'Medicine record created successfully!'
+        });
 
-      // Navigate back after delay
-      setTimeout(() => {
-        navigate('/gaushala/health-history');
-      }, 2000);
+        // Navigate back after delay
+        setTimeout(() => {
+          navigate('/gaushala/health-history');
+        }, 2000);
+      } else {
+        setMessage({
+          type: 'error',
+          text: result.error || 'Failed to create medicine record.'
+        });
+      }
     } catch (error) {
       setMessage({
         type: 'error',
@@ -123,17 +127,6 @@ export default function AddMedicine() {
 
   const handleCancel = () => {
     navigate('/gaushala/health-history');
-  };
-
-  // Format date for display (M d, Y format)
-  const formatDateForDisplay = (dateString: string) => {
-    if (!dateString) return '';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric'
-    });
   };
 
   const InputField = ({
@@ -154,7 +147,7 @@ export default function AddMedicine() {
       <input
         type={type}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => onChange(type === 'number' ? Number(e.target.value) : e.target.value)}
         placeholder={placeholder}
         className={`w-full px-3 py-2 bg-white border rounded-lg transition-all duration-200 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent hover:border-gray-400 ${
           error ? 'border-red-300 bg-red-50' : 'border-gray-300'
@@ -244,8 +237,8 @@ export default function AddMedicine() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Create Medicine</h1>
-            <p className="text-gray-600 mt-1">Health History Create</p>
+            <h1 className="text-2xl font-bold text-gray-900">Add New Medicine</h1>
+            <p className="text-gray-600 mt-1">Create new medicine inventory record</p>
           </div>
           <button
             onClick={handleCancel}
@@ -279,210 +272,124 @@ export default function AddMedicine() {
           <div className="p-6 border-b border-gray-100">
             <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-3">
               <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
-                <Heart className="h-5 w-5 text-blue-600" />
+                <Pill className="h-5 w-5 text-blue-600" />
               </div>
-              Create New Medicine
+              Medicine Information
             </h2>
           </div>
 
           <form onSubmit={handleSubmit} className="p-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Batch Name */}
+              {/* Medicine Name */}
               <InputField
-                label="Batch Name"
-                value={formData.batchName}
-                onChange={(value: string) => handleInputChange('batchName', value)}
-                placeholder="Enter batch name"
+                label="Medicine Name"
+                value={formData.name}
+                onChange={(value: string) => handleInputChange('name', value)}
+                placeholder="Enter medicine name"
                 required
-                error={errors.batchName}
+                error={errors.name}
               />
 
-              {/* Shed No */}
-              <SelectField
-                label="Shed No"
-                value={formData.shedNo}
-                onChange={(value: string) => handleInputChange('shedNo', value)}
-                placeholder="Select shed"
+              {/* Batch Number */}
+              <InputField
+                label="Batch Number"
+                value={formData.batchNumber}
+                onChange={(value: string) => handleInputChange('batchNumber', value)}
+                placeholder="Enter batch number"
+                error={errors.batchNumber}
+              />
+
+              {/* Dosage */}
+              <InputField
+                label="Dosage"
+                value={formData.dosage}
+                onChange={(value: string) => handleInputChange('dosage', value)}
+                placeholder="e.g., 500mg twice daily"
                 required
-                error={errors.shedNo}
+                error={errors.dosage}
+              />
+
+              {/* Unit */}
+              <SelectField
+                label="Unit"
+                value={formData.unit}
+                onChange={(value: string) => handleInputChange('unit', value)}
+                placeholder="Select unit"
+                required
+                error={errors.unit}
                 options={[
-                  { value: 'Shed_1', label: 'Shed 1' },
-                  { value: 'Shed_2', label: 'Shed 2' },
-                  { value: 'Shed_3', label: 'Shed 3' },
-                  { value: 'Shed_4', label: 'Shed 4' },
-                  { value: 'Shed_5', label: 'Shed 5' }
+                  { value: 'mg', label: 'Milligrams (mg)' },
+                  { value: 'ml', label: 'Milliliters (ml)' },
+                  { value: 'g', label: 'Grams (g)' },
+                  { value: 'tablets', label: 'Tablets' },
+                  { value: 'capsules', label: 'Capsules' },
+                  { value: 'units', label: 'Units' }
                 ]}
               />
 
-              {/* Start Date */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-800">
-                  Start Date <span className="text-red-500">*</span>
-                </label>
-                <div className="relative">
-                  <input
-                    type="date"
-                    value={formData.startDate}
-                    onChange={(e) => handleInputChange('startDate', e.target.value)}
-                    className={`w-full px-3 py-2 bg-white border rounded-lg transition-all duration-200 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent hover:border-gray-400 ${
-                      errors.startDate ? 'border-red-300 bg-red-50' : 'border-gray-300'
-                    }`}
-                  />
-                  <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
-                </div>
-                {formData.startDate && (
-                  <p className="text-sm text-gray-600">
-                    Format: {formatDateForDisplay(formData.startDate)}
-                  </p>
-                )}
-                {errors.startDate && (
-                  <div className="flex items-center gap-2 text-sm text-red-600">
-                    <span className="text-red-500">⚠</span>
-                    {errors.startDate}
-                  </div>
-                )}
-              </div>
-
-              {/* End Date */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-800">
-                  End Date <span className="text-red-500">*</span>
-                </label>
-                <div className="relative">
-                  <input
-                    type="date"
-                    value={formData.endDate}
-                    onChange={(e) => handleInputChange('endDate', e.target.value)}
-                    className={`w-full px-3 py-2 bg-white border rounded-lg transition-all duration-200 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent hover:border-gray-400 ${
-                      errors.endDate ? 'border-red-300 bg-red-50' : 'border-gray-300'
-                    }`}
-                  />
-                  <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
-                </div>
-                {formData.endDate && (
-                  <p className="text-sm text-gray-600">
-                    Format: {formatDateForDisplay(formData.endDate)}
-                  </p>
-                )}
-                {errors.endDate && (
-                  <div className="flex items-center gap-2 text-sm text-red-600">
-                    <span className="text-red-500">⚠</span>
-                    {errors.endDate}
-                  </div>
-                )}
-              </div>
-
-              {/* Identify Date */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-800">
-                  Identify Date <span className="text-red-500">*</span>
-                </label>
-                <div className="relative">
-                  <input
-                    type="date"
-                    value={formData.identifyDate}
-                    onChange={(e) => handleInputChange('identifyDate', e.target.value)}
-                    className={`w-full px-3 py-2 bg-white border rounded-lg transition-all duration-200 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent hover:border-gray-400 ${
-                      errors.identifyDate ? 'border-red-300 bg-red-50' : 'border-gray-300'
-                    }`}
-                  />
-                  <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
-                </div>
-                {formData.identifyDate && (
-                  <p className="text-sm text-gray-600">
-                    Format: {formatDateForDisplay(formData.identifyDate)}
-                  </p>
-                )}
-                {errors.identifyDate && (
-                  <div className="flex items-center gap-2 text-sm text-red-600">
-                    <span className="text-red-500">⚠</span>
-                    {errors.identifyDate}
-                  </div>
-                )}
-              </div>
-
-              {/* Next Follow Up Date */}
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-800">
-                  Next Follow Up Date <span className="text-red-500">*</span>
-                </label>
-                <div className="relative">
-                  <input
-                    type="date"
-                    value={formData.nextFollowUpDate}
-                    onChange={(e) => handleInputChange('nextFollowUpDate', e.target.value)}
-                    className={`w-full px-3 py-2 bg-white border rounded-lg transition-all duration-200 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent hover:border-gray-400 ${
-                      errors.nextFollowUpDate ? 'border-red-300 bg-red-50' : 'border-gray-300'
-                    }`}
-                  />
-                  <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
-                </div>
-                {formData.nextFollowUpDate && (
-                  <p className="text-sm text-gray-600">
-                    Format: {formatDateForDisplay(formData.nextFollowUpDate)}
-                  </p>
-                )}
-                {errors.nextFollowUpDate && (
-                  <div className="flex items-center gap-2 text-sm text-red-600">
-                    <span className="text-red-500">⚠</span>
-                    {errors.nextFollowUpDate}
-                  </div>
-                )}
-              </div>
-
-              {/* Doctor */}
-              <SelectField
-                label="Doctor"
-                value={formData.doctor}
-                onChange={(value: string) => handleInputChange('doctor', value)}
-                placeholder="Select doctor"
-                required
-                error={errors.doctor}
-                options={[
-                  { value: 'Dr. Smith', label: 'Dr. Smith' },
-                  { value: 'Dr. Johnson', label: 'Dr. Johnson' },
-                  { value: 'Dr. Williams', label: 'Dr. Williams' },
-                  { value: 'Dr. Brown', label: 'Dr. Brown' },
-                  { value: 'Mr. User', label: 'Mr. User' }
-                ]}
-              />
-
-              {/* Regular Dose */}
+              {/* Quantity */}
               <InputField
-                label="Regular Dose"
-                value={formData.regularDose}
-                onChange={(value: string) => handleInputChange('regularDose', value)}
-                placeholder="Enter regular dose (e.g., 10mg twice daily)"
+                label="Quantity"
+                type="number"
+                value={formData.quantity}
+                onChange={(value: number) => handleInputChange('quantity', value)}
+                placeholder="Enter quantity in stock"
                 required
-                error={errors.regularDose}
+                error={errors.quantity}
+                min="0"
               />
 
-              {/* Special Dose */}
+              {/* Expiry Date */}
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-800">
+                  Expiry Date <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="date"
+                    value={formData.expiryDate}
+                    onChange={(e) => handleInputChange('expiryDate', e.target.value)}
+                    className={`w-full px-3 py-2 bg-white border rounded-lg transition-all duration-200 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent hover:border-gray-400 ${
+                      errors.expiryDate ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                    }`}
+                  />
+                  <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                </div>
+                {errors.expiryDate && (
+                  <div className="flex items-center gap-2 text-sm text-red-600">
+                    <span className="text-red-500">⚠</span>
+                    {errors.expiryDate}
+                  </div>
+                )}
+              </div>
+
+              {/* Manufacturer */}
               <InputField
-                label="Special Dose"
-                value={formData.specialDose}
-                onChange={(value: string) => handleInputChange('specialDose', value)}
-                placeholder="Enter special dose if any"
-                className="md:col-span-2"
+                label="Manufacturer"
+                value={formData.manufacturer}
+                onChange={(value: string) => handleInputChange('manufacturer', value)}
+                placeholder="Enter manufacturer name"
+                error={errors.manufacturer}
               />
 
-              {/* Comments */}
+              {/* Purpose */}
               <TextAreaField
-                label="Comments"
-                value={formData.comments}
-                onChange={(value: string) => handleInputChange('comments', value)}
-                placeholder="Enter any additional comments or notes about the treatment"
+                label="Purpose"
+                value={formData.purpose}
+                onChange={(value: string) => handleInputChange('purpose', value)}
+                placeholder="Enter purpose or indication for use"
+                className="md:col-span-2"
+                rows={2}
+              />
+
+              {/* Description */}
+              <TextAreaField
+                label="Description"
+                value={formData.description}
+                onChange={(value: string) => handleInputChange('description', value)}
+                placeholder="Enter additional details about the medicine"
                 className="md:col-span-2"
                 rows={3}
-              />
-
-              {/* Version */}
-              <InputField
-                label="Version"
-                value={formData.version}
-                onChange={(value: string) => handleInputChange('version', value)}
-                placeholder="Enter version (e.g., 1.0, 2.1)"
-                className="md:col-span-2"
               />
             </div>
 
@@ -501,7 +408,7 @@ export default function AddMedicine() {
                 className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 <Save className="h-4 w-4" />
-                {isLoading ? 'Creating...' : 'Create Medicine Record'}
+                {isLoading ? 'Creating...' : 'Create Medicine'}
               </button>
             </div>
           </form>

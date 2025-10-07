@@ -1,173 +1,261 @@
 /**
- * Edit Cattle Page - Edit existing cattle entries with all comprehensive fields
+ * Edit Cattle Page - Edit existing cattle entries
+ * Updated to use master data IDs and proper field mappings for backend integration
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Save, ArrowLeft, Calendar, FileText, Scan, Upload, Camera } from 'lucide-react';
+import {
+  Save, ArrowLeft, Scan, Upload, Camera, FileText,
+  User, Home, Activity, Baby, Globe, Settings, Ruler,
+  AlertCircle, CheckCircle, Clock, Plus, X
+} from 'lucide-react';
+import {
+  cattleApi,
+  masterDataApi,
+  calculateDobFromAge,
+  calculateAgeFromDob,
+  type Breed,
+  type Species,
+  type Gender,
+  type Color,
+  type Location,
+  type Cattle
+} from '../../services/gaushala/api';
 
-interface CattleFormData {
-  // Basic Identification
-  uniqueAnimalId: string;
-  name: string;
-  breed: string;
-  gender: string;
-  dateOfBirth: string;
-  age: string;
-  colorMarkings: string;
-
-  // Gaushala Assignment
-  gaushala: string;
-
-  // Health & Medical Records
-  vaccinationStatus: string;
-  disability: string;
-  veterinarianName: string;
-  veterinarianContact: string;
-
-  // Physical Characteristics
-  weight: string;
-  height: string;
-  hornStatus: string;
-  rfidTagNumber: string;
-  earTagNumber: string;
-  microchipNumber: string;
-
-  // Reproductive Details
-  reproductiveStatus: string;
-  lastCalvingDate: string;
-  pregnancyStatus: string;
-  breedingHistory: string;
-
-  // Origin & Ownership
-  sourceLocation: string;
-  previousOwner: string;
-  acquisitionDate: string;
-  ownershipStatus: string;
-
-  // Shelter & Feeding
-  shedNumber: string;
-  typeOfFeed: string;
-  feedingSchedule: string;
+interface LanguageContextType {
+  language: 'hi' | 'en';
+  t: (key: string) => string;
 }
 
-// Create mock data for any ID
-const createMockFormData = (id: string): CattleFormData => ({
-  uniqueAnimalId: `COW-2025-${id.padStart(3, '0')}`,
-  name: id === '1' ? 'Ganga' : `Cattle ${id}`,
-  breed: id === '1' ? 'gir' : 'holstein',
-  gender: 'female',
-  dateOfBirth: '2022-03-15',
-  age: '35',
-  colorMarkings: 'Light brown with white patches on forehead',
-  gaushala: 'main_gaushala',
-  vaccinationStatus: 'FMD, HS, BQ completed',
-  disability: 'None',
-  veterinarianName: 'Dr. Rajesh Kumar',
-  veterinarianContact: '+91-9876543210',
-  weight: '450',
-  height: '140',
-  hornStatus: 'horned',
-  rfidTagNumber: `RFID-${id}2345`,
-  earTagNumber: `EAR-${id.padStart(3, '0')}`,
-  microchipNumber: `MC-${id}2345`,
-  reproductiveStatus: 'breeding',
-  lastCalvingDate: '2024-08-15',
-  pregnancyStatus: 'not_pregnant',
-  breedingHistory: 'Delivered 3 healthy calves',
-  sourceLocation: 'Ahmedabad, Gujarat',
-  previousOwner: 'Ramesh Patel',
-  acquisitionDate: '2022-04-01',
-  ownershipStatus: 'owned',
-  shedNumber: `Shed-A${id}`,
-  typeOfFeed: 'grass',
-  feedingSchedule: 'Morning: 10kg fodder, Evening: 8kg concentrate'
-});
+interface EditCattleProps {
+  languageContext: LanguageContextType;
+}
 
-export default function EditCattle() {
+export default function EditCattle({ languageContext }: EditCattleProps) {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
-  const [isLoading, setIsLoading] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [isScanning, setIsScanning] = useState(false);
 
-  const [formData, setFormData] = useState<CattleFormData>({
+  // Master data state
+  const [breeds, setBreeds] = useState<Breed[]>([]);
+  const [species, setSpecies] = useState<Species[]>([]);
+  const [genders, setGenders] = useState<Gender[]>([]);
+  const [colors, setColors] = useState<Color[]>([]);
+  const [locations, setLocations] = useState<Location[]>([]);
+  const [masterDataLoading, setMasterDataLoading] = useState(true);
+
+  const [formData, setFormData] = useState({
+    // Basic Identification - Updated to use IDs
     uniqueAnimalId: '',
     name: '',
-    breed: '',
-    gender: '',
-    dateOfBirth: '',
-    age: '',
-    colorMarkings: '',
-    gaushala: '',
+    breedId: 0,
+    speciesId: 0,
+    genderId: 0,
+    colorId: 0,
+    ageYears: 0,  // User sees age, will be converted to dob on submit
+    dateOfEntry: new Date().toISOString().split('T')[0],
+
+    // Gaushala Assignment - Updated to use ID
+    gaushalaId: 0,
+
+    // Health & Medical Records
     vaccinationStatus: '',
     disability: '',
     veterinarianName: '',
+    dewormingSchedule: '',
+    lastHealthCheckup: '',
     veterinarianContact: '',
+    medicalHistory: '',
+
+    // Physical Characteristics - Updated field name
     weight: '',
-    height: '',
     hornStatus: '',
-    rfidTagNumber: '',
+    rfidTagNo: '',  // Changed from rfidTagNumber to match backend
+    height: '',
     earTagNumber: '',
     microchipNumber: '',
-    reproductiveStatus: '',
+
+    // Reproductive Details (Female only)
+    milkingStatus: '',
+    milkYieldPerDay: '',
+    numberOfCalves: '',
+    lactationNumber: '',
     lastCalvingDate: '',
     pregnancyStatus: '',
-    breedingHistory: '',
-    sourceLocation: '',
+
+    // Origin & Ownership
+    sourceOfAcquisition: '',
     previousOwner: '',
-    acquisitionDate: '',
+    dateOfAcquisition: '',
     ownershipStatus: '',
+
+    // Shelter & Feeding
     shedNumber: '',
     typeOfFeed: '',
-    feedingSchedule: ''
+    feedingSchedule: '',
+
+    // Supporting Documents
+    photoFile: null as File | null,
+    healthCertificate: null as File | null,
+    vaccinationRecord: null as File | null,
+    purchaseDocument: null as File | null
   });
 
-  const [errors, setErrors] = useState<Partial<CattleFormData>>({});
+  const [isLoading, setIsLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [isScanning, setIsScanning] = useState(false);
+  const [message, setMessage] = useState<{ type: 'success' | 'error' | 'warning'; text: string } | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [activeSection, setActiveSection] = useState(0);
 
+  // Load master data and cattle record on component mount
   useEffect(() => {
-    const fetchRecord = async () => {
+    const loadData = async () => {
+      if (!id) {
+        setMessage({ type: 'error', text: 'Invalid cattle ID' });
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
       try {
-        // TODO: Replace with actual API call
-        if (id) {
-          const foundRecord = createMockFormData(id);
-          setFormData(foundRecord);
+        // Load master data and cattle record in parallel
+        const [breedsRes, speciesRes, gendersRes, colorsRes, locationsRes, cattleRes] = await Promise.all([
+          masterDataApi.getAllBreeds(),
+          masterDataApi.getAllSpecies(),
+          masterDataApi.getAllGenders(),
+          masterDataApi.getAllColors(),
+          masterDataApi.getAllLocations(),
+          cattleApi.getCattleById(parseInt(id))
+        ]);
+
+        if (breedsRes.success && breedsRes.data) setBreeds(breedsRes.data);
+        if (speciesRes.success && speciesRes.data) setSpecies(speciesRes.data);
+        if (gendersRes.success && gendersRes.data) setGenders(gendersRes.data);
+        if (colorsRes.success && colorsRes.data) setColors(colorsRes.data);
+        if (locationsRes.success && locationsRes.data) setLocations(locationsRes.data);
+
+        if (cattleRes.success && cattleRes.data) {
+          const cattle = cattleRes.data;
+          // Transform backend data to form data (dob → ageYears)
+          setFormData({
+            uniqueAnimalId: cattle.uniqueAnimalId,
+            name: cattle.name || '',
+            breedId: cattle.breedId,
+            speciesId: cattle.speciesId,
+            genderId: cattle.genderId,
+            colorId: cattle.colorId,
+            ageYears: calculateAgeFromDob(cattle.dob),
+            dateOfEntry: new Date().toISOString().split('T')[0],
+            gaushalaId: cattle.gaushalaId,
+            vaccinationStatus: '',
+            disability: '',
+            veterinarianName: cattle.vetName || '',
+            dewormingSchedule: '',
+            lastHealthCheckup: '',
+            veterinarianContact: cattle.vetContact || '',
+            medicalHistory: cattle.healthStatus || '',
+            weight: cattle.weight?.toString() || '',
+            hornStatus: '',
+            rfidTagNo: cattle.rfidTagNo || '',
+            height: cattle.height?.toString() || '',
+            earTagNumber: '',
+            microchipNumber: '',
+            milkingStatus: '',
+            milkYieldPerDay: '',
+            numberOfCalves: '',
+            lactationNumber: '',
+            lastCalvingDate: '',
+            pregnancyStatus: '',
+            sourceOfAcquisition: '',
+            previousOwner: '',
+            dateOfAcquisition: '',
+            ownershipStatus: '',
+            shedNumber: cattle.shedNumber || '',
+            typeOfFeed: '',
+            feedingSchedule: '',
+            photoFile: null,
+            healthCertificate: null,
+            vaccinationRecord: null,
+            purchaseDocument: null
+          });
+        } else {
+          setMessage({
+            type: 'error',
+            text: cattleRes.error || 'Failed to load cattle record.'
+          });
         }
       } catch (error) {
-        console.error('Error fetching cattle record:', error);
+        console.error('Failed to load data:', error);
         setMessage({
           type: 'error',
-          text: 'Failed to load cattle record.'
+          text: 'Failed to load cattle record. Please try again.'
         });
       } finally {
         setLoading(false);
+        setMasterDataLoading(false);
       }
     };
 
-    if (id) {
-      fetchRecord();
-    }
+    loadData();
   }, [id]);
 
-  const handleInputChange = (field: keyof CattleFormData, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+  const handleInputChange = useCallback((field: string, value: string | File | null | number) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+
+    // Clear error for this field
     if (errors[field]) {
-      setErrors(prev => ({ ...prev, [field]: '' }));
+      setErrors(prev => ({
+        ...prev,
+        [field]: ''
+      }));
+    }
+    setMessage(null);
+  }, [errors]);
+
+  const handleScanRfid = async () => {
+    setIsScanning(true);
+    try {
+      const response = await cattleApi.scanRfid();
+      if (response.success && response.data) {
+        handleInputChange('rfidTagNo', response.data.rfidTag);
+
+        if (response.data.cattleInfo) {
+          setMessage({
+            type: 'warning',
+            text: 'RFID tag already exists for another cattle'
+          });
+        } else {
+          setMessage({
+            type: 'success',
+            text: 'RFID tag scanned successfully'
+          });
+        }
+      }
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text: 'Failed to scan RFID tag'
+      });
+    } finally {
+      setIsScanning(false);
     }
   };
 
-  const validateForm = (): boolean => {
-    const newErrors: Partial<CattleFormData> = {};
+  const validateForm = () => {
+    const newErrors: Record<string, string> = {};
 
+    // Required fields validation - Updated for ID fields
     if (!formData.uniqueAnimalId.trim()) newErrors.uniqueAnimalId = 'Unique Animal ID is required';
-    if (!formData.name.trim()) newErrors.name = 'Name is required';
-    if (!formData.breed.trim()) newErrors.breed = 'Breed is required';
-    if (!formData.gender.trim()) newErrors.gender = 'Gender is required';
-    if (!formData.dateOfBirth.trim()) newErrors.dateOfBirth = 'Date of Birth is required';
-    if (!formData.gaushala.trim()) newErrors.gaushala = 'Gaushala selection is required';
-    if (!formData.rfidTagNumber.trim()) newErrors.rfidTagNumber = 'RFID Tag Number is required';
+    if (formData.breedId === 0) newErrors.breedId = 'Breed is required';
+    if (formData.speciesId === 0) newErrors.speciesId = 'Species is required';
+    if (formData.genderId === 0) newErrors.genderId = 'Gender is required';
+    if (!formData.dateOfEntry) newErrors.dateOfEntry = 'Date of Entry is required';
+    if (formData.gaushalaId === 0) newErrors.gaushalaId = 'Gaushala selection is required';
+    if (!formData.rfidTagNo.trim()) newErrors.rfidTagNo = 'RFID Tag Number is required';
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -179,7 +267,15 @@ export default function EditCattle() {
     if (!validateForm()) {
       setMessage({
         type: 'error',
-        text: 'Please fill in all required fields.'
+        text: 'Please fill in all required fields'
+      });
+      return;
+    }
+
+    if (!id) {
+      setMessage({
+        type: 'error',
+        text: 'Invalid cattle ID'
       });
       return;
     }
@@ -188,25 +284,78 @@ export default function EditCattle() {
     setMessage(null);
 
     try {
-      // TODO: Replace with actual API call
-      console.log('Updating cattle entry:', { id, ...formData });
+      // Transform formData to match Cattle interface for backend
+      const cattleData: Omit<Cattle, 'id' | 'createdAt' | 'updatedAt'> = {
+        uniqueAnimalId: formData.uniqueAnimalId,
+        name: formData.name,
+        breedId: formData.breedId,
+        speciesId: formData.speciesId,
+        genderId: formData.genderId,
+        colorId: formData.colorId,
+        dob: formData.ageYears > 0 ? calculateDobFromAge(formData.ageYears) : new Date().toISOString(),
+        weight: formData.weight ? parseFloat(formData.weight) : undefined,
+        height: formData.height ? parseFloat(formData.height) : undefined,
+        rfidTagNo: formData.rfidTagNo,
+        gaushalaId: formData.gaushalaId,
+        shedNumber: formData.shedNumber || undefined,
+        healthStatus: formData.medicalHistory || undefined,
+        vetName: formData.veterinarianName || undefined,
+        vetContact: formData.veterinarianContact || undefined,
+        isActive: true,
+        totalDungCollected: 0,
+        lastDungCollection: 0,
+      };
 
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const response = await cattleApi.updateCattle(parseInt(id), cattleData);
 
-      setMessage({
-        type: 'success',
-        text: 'Cattle record updated successfully!'
-      });
+      if (response.success && response.data) {
+        // Upload documents if provided
+        const uploadPromises = [];
 
-      // Navigate back after delay
-      setTimeout(() => {
-        navigate('/gaushala/cattle');
-      }, 2000);
+        if (formData.photoFile) {
+          uploadPromises.push(cattleApi.uploadPhoto(response.data.id!, formData.photoFile));
+        }
+
+        if (formData.healthCertificate) {
+          // TODO: Implement uploadDocument API method
+          console.log('Health certificate upload pending implementation');
+        }
+
+        if (formData.vaccinationRecord) {
+          // TODO: Implement uploadDocument API method
+          console.log('Vaccination record upload pending implementation');
+        }
+
+        if (formData.purchaseDocument) {
+          // TODO: Implement uploadDocument API method
+          console.log('Purchase document upload pending implementation');
+        }
+
+        // Wait for all uploads
+        if (uploadPromises.length > 0) {
+          try {
+            await Promise.all(uploadPromises);
+          } catch (uploadError) {
+            console.warn('Some document uploads failed:', uploadError);
+          }
+        }
+
+        setMessage({
+          type: 'success',
+          text: 'Cattle updated successfully!'
+        });
+
+        // Navigate back after delay
+        setTimeout(() => {
+          navigate('/gaushala/cattle');
+        }, 2000);
+      } else {
+        throw new Error(response.error || 'Failed to update cattle');
+      }
     } catch (error) {
       setMessage({
         type: 'error',
-        text: 'Failed to update cattle record. Please try again.'
+        text: 'Failed to update cattle. Please try again.'
       });
     } finally {
       setIsLoading(false);
@@ -217,15 +366,57 @@ export default function EditCattle() {
     navigate('/gaushala/cattle');
   };
 
-  const handleScanRfid = async () => {
-    setIsScanning(true);
-    // Simulate RFID scanning
-    setTimeout(() => {
-      const newRfidNumber = `RFID-${Date.now().toString().slice(-6)}`;
-      setFormData(prev => ({ ...prev, rfidTagNumber: newRfidNumber }));
-      setIsScanning(false);
-    }, 2000);
-  };
+  const sections = [
+    {
+      id: 'basic',
+      title: 'Basic Identification',
+      icon: User,
+      color: 'from-blue-500 to-indigo-600',
+      progress: 0
+    },
+    {
+      id: 'gaushala',
+      title: 'Gaushala',
+      icon: Home,
+      color: 'from-green-500 to-teal-600',
+      progress: 0
+    },
+    {
+      id: 'physical',
+      title: 'Physical Characteristics',
+      icon: Ruler,
+      color: 'from-purple-500 to-violet-600',
+      progress: 0
+    },
+    {
+      id: 'health',
+      title: 'Health & Medical',
+      icon: Activity,
+      color: 'from-red-500 to-pink-600',
+      progress: 0
+    },
+    {
+      id: 'reproductive',
+      title: 'Reproductive Details',
+      icon: Baby,
+      color: 'from-pink-500 to-rose-600',
+      progress: 0
+    },
+    {
+      id: 'origin',
+      title: 'Origin & Ownership',
+      icon: Globe,
+      color: 'from-emerald-500 to-teal-600',
+      progress: 0
+    },
+    {
+      id: 'shelter',
+      title: 'Shelter & Feeding',
+      icon: Settings,
+      color: 'from-amber-500 to-yellow-600',
+      progress: 0
+    }
+  ];
 
   const InputField = ({
     label,
@@ -245,7 +436,7 @@ export default function EditCattle() {
       <input
         type={type}
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => onChange(type === 'number' ? Number(e.target.value) : e.target.value)}
         placeholder={placeholder}
         className={`w-full px-3 py-2 bg-white border rounded-lg transition-all duration-200 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent hover:border-gray-400 ${
           error ? 'border-red-300 bg-red-50' : 'border-gray-300'
@@ -254,7 +445,7 @@ export default function EditCattle() {
       />
       {error && (
         <div className="flex items-center gap-2 text-sm text-red-600">
-          <span className="text-red-500">⚠</span>
+          <AlertCircle className="h-4 w-4" />
           {error}
         </div>
       )}
@@ -265,10 +456,10 @@ export default function EditCattle() {
     label,
     value,
     onChange,
+    options,
     placeholder,
     required = false,
     error,
-    options,
     className = ''
   }: any) => (
     <div className={`space-y-2 ${className}`}>
@@ -291,7 +482,7 @@ export default function EditCattle() {
       </select>
       {error && (
         <div className="flex items-center gap-2 text-sm text-red-600">
-          <span className="text-red-500">⚠</span>
+          <AlertCircle className="h-4 w-4" />
           {error}
         </div>
       )}
@@ -303,533 +494,678 @@ export default function EditCattle() {
     value,
     onChange,
     placeholder,
-    required = false,
-    error,
     rows = 3,
     className = ''
   }: any) => (
     <div className={`space-y-2 ${className}`}>
       <label className="block text-sm font-medium text-gray-800">
-        {label} {required && <span className="text-red-500">*</span>}
+        {label}
       </label>
       <textarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         rows={rows}
-        className={`w-full px-3 py-2 bg-white border rounded-lg transition-all duration-200 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent hover:border-gray-400 resize-vertical ${
-          error ? 'border-red-300 bg-red-50' : 'border-gray-300'
-        }`}
+        className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg transition-all duration-200 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent hover:border-gray-400 resize-none"
       />
-      {error && (
-        <div className="flex items-center gap-2 text-sm text-red-600">
-          <span className="text-red-500">⚠</span>
-          {error}
-        </div>
-      )}
+    </div>
+  );
+
+  const FileUploadField = ({
+    label,
+    value,
+    onChange,
+    accept,
+    className = ''
+  }: any) => (
+    <div className={`space-y-2 ${className}`}>
+      <label className="block text-sm font-medium text-gray-800">
+        {label}
+      </label>
+      <div className="relative">
+        <input
+          type="file"
+          accept={accept}
+          onChange={(e) => onChange(e.target.files?.[0] || null)}
+          className="hidden"
+          id={label.replace(/\s+/g, '-').toLowerCase()}
+        />
+        <label
+          htmlFor={label.replace(/\s+/g, '-').toLowerCase()}
+          className="flex items-center justify-center w-full px-3 py-2 bg-white border-2 border-dashed border-gray-300 rounded-lg transition-all duration-200 cursor-pointer hover:border-blue-400 hover:bg-blue-50 group"
+        >
+          <div className="flex items-center gap-3 text-gray-600 group-hover:text-blue-600">
+            <Upload className="h-5 w-5" />
+            <span className="text-sm font-medium">
+              {value ? value.name : `Choose ${label.toLowerCase()}`}
+            </span>
+          </div>
+        </label>
+        {value && (
+          <button
+            type="button"
+            onClick={() => onChange(null)}
+            className="absolute top-2 right-2 p-1 bg-red-100 text-red-600 rounded-full hover:bg-red-200 transition-colors"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
+      </div>
     </div>
   );
 
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-64">
-        <div className="text-gray-500">Loading...</div>
+        <div className="text-gray-500">Loading cattle record...</div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Edit Cattle</h1>
-          <p className="text-gray-600 mt-1">Update cattle record #{id}</p>
+      <div className="flex justify-between items-center">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={handleCancel}
+            className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <ArrowLeft className="h-5 w-5" />
+            <span className="font-medium">Back</span>
+          </button>
+
+          <div className="h-8 w-px bg-gray-300"></div>
+
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
+              <span className="text-2xl">🐄</span>
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">Edit Cattle Record</h2>
+              <p className="text-gray-600">Update cattle information - ID #{id}</p>
+            </div>
+          </div>
         </div>
-        <button
-          onClick={handleCancel}
-          className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg transition-colors"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back
-        </button>
+
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleCancel}
+            className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            form="cattle-form"
+            disabled={isLoading}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+          >
+            <Save className="h-4 w-4" />
+            {isLoading ? 'Updating...' : 'Update Cattle'}
+          </button>
+        </div>
       </div>
 
-      {/* Message */}
+      {/* Progress Indicator */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+        <div className="flex items-center justify-between overflow-x-auto">
+          {sections.map((section, index) => {
+            const Icon = section.icon;
+            return (
+              <div key={section.id} className="flex items-center flex-shrink-0">
+                <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-blue-100 text-blue-600">
+                  <Icon className="h-4 w-4" />
+                </div>
+                <div className="ml-2">
+                  <p className="text-xs font-medium text-gray-700">{section.title}</p>
+                </div>
+                {index < sections.length - 1 && (
+                  <div className="w-8 h-px bg-gray-300 mx-3"></div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Message Alert */}
       {message && (
-        <div className={`p-4 rounded-lg border ${
+        <div className={`p-4 rounded-lg border-l-4 ${
           message.type === 'success'
-            ? 'bg-green-50 border-green-200 text-green-800'
-            : 'bg-red-50 border-red-200 text-red-800'
+            ? 'bg-green-50 border-green-400 text-green-800'
+            : message.type === 'warning'
+            ? 'bg-yellow-50 border-yellow-400 text-yellow-800'
+            : 'bg-red-50 border-red-400 text-red-800'
         }`}>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             {message.type === 'success' ? (
-              <span className="text-green-500">✓</span>
+              <CheckCircle className="h-5 w-5" />
+            ) : message.type === 'warning' ? (
+              <Clock className="h-5 w-5" />
             ) : (
-              <span className="text-red-500">⚠</span>
+              <AlertCircle className="h-5 w-5" />
             )}
-            {message.text}
+            <span className="font-medium">{message.text}</span>
           </div>
         </div>
       )}
+      <form id="cattle-form" onSubmit={handleSubmit} className="space-y-6">
+        {/* Main Grid Layout */}
+        <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
 
-      {/* Main Form */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-        <div className="p-6 border-b border-gray-100">
-          <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-3">
-            <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
-              <FileText className="h-5 w-5 text-blue-600" />
-            </div>
-            Edit Cattle Information
-          </h2>
-        </div>
+          {/* Left Section - 3 columns */}
+          <div className="xl:col-span-3 space-y-6">
 
-        <form onSubmit={handleSubmit} className="p-6">
-          <div className="space-y-8">
             {/* Basic Identification */}
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-3">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-3">
                 <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
-                  <FileText className="h-5 w-5 text-blue-600" />
+                  <User className="h-5 w-5 text-blue-600" />
                 </div>
                 🐄 Basic Identification
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <InputField
-                  label="Unique Animal ID"
-                  value={formData.uniqueAnimalId}
-                  onChange={(value: string) => handleInputChange('uniqueAnimalId', value)}
-                  placeholder="e.g., COW-2025-001"
-                  required
-                  error={errors.uniqueAnimalId}
-                />
+              </h2>
 
-                <InputField
-                  label="Name"
-                  value={formData.name}
-                  onChange={(value: string) => handleInputChange('name', value)}
-                  placeholder="Enter cattle name"
-                  required
-                  error={errors.name}
-                />
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  <InputField
+                    label="Unique Animal ID"
+                    value={formData.uniqueAnimalId}
+                    onChange={(value: string) => handleInputChange('uniqueAnimalId', value)}
+                    placeholder="Enter unique animal ID"
+                    required
+                    error={errors.uniqueAnimalId}
+                  />
 
-                <SelectField
-                  label="Breed"
-                  value={formData.breed}
-                  onChange={(value: string) => handleInputChange('breed', value)}
-                  placeholder="Select breed"
-                  required
-                  error={errors.breed}
-                  options={[
-                    { value: 'gir', label: 'Gir' },
-                    { value: 'holstein', label: 'Holstein Friesian' },
-                    { value: 'jersey', label: 'Jersey' },
-                    { value: 'sahiwal', label: 'Sahiwal' },
-                    { value: 'red_sindhi', label: 'Red Sindhi' },
-                    { value: 'tharparkar', label: 'Tharparkar' }
-                  ]}
-                />
+                  <InputField
+                    label="Name (Optional)"
+                    value={formData.name}
+                    onChange={(value: string) => handleInputChange('name', value)}
+                    placeholder="Enter cattle name"
+                  />
 
-                <SelectField
-                  label="Gender"
-                  value={formData.gender}
-                  onChange={(value: string) => handleInputChange('gender', value)}
-                  placeholder="Select gender"
-                  required
-                  error={errors.gender}
-                  options={[
-                    { value: 'male', label: 'Male' },
-                    { value: 'female', label: 'Female' }
-                  ]}
-                />
+                  <SelectField
+                    label="Breed"
+                    value={formData.breedId}
+                    onChange={(value: string) => handleInputChange('breedId', parseInt(value) || 0)}
+                    placeholder={masterDataLoading ? 'Loading breeds...' : 'Select Breed'}
+                    required
+                    error={errors.breedId}
+                    options={breeds.map(breed => ({
+                      value: breed.id.toString(),
+                      label: breed.name
+                    }))}
+                  />
 
-                <InputField
-                  label="Date of Birth"
-                  value={formData.dateOfBirth}
-                  onChange={(value: string) => handleInputChange('dateOfBirth', value)}
-                  type="date"
-                  required
-                  error={errors.dateOfBirth}
-                />
+                  <SelectField
+                    label="Species"
+                    value={formData.speciesId}
+                    onChange={(value: string) => handleInputChange('speciesId', parseInt(value) || 0)}
+                    placeholder={masterDataLoading ? 'Loading species...' : 'Select Species'}
+                    required
+                    error={errors.speciesId}
+                    options={species.map(s => ({
+                      value: s.id.toString(),
+                      label: s.name
+                    }))}
+                  />
 
-                <InputField
-                  label="Age (months)"
-                  value={formData.age}
-                  onChange={(value: string) => handleInputChange('age', value)}
-                  type="number"
-                  placeholder="Age in months"
-                />
+                  <SelectField
+                    label="Gender"
+                    value={formData.genderId}
+                    onChange={(value: string) => handleInputChange('genderId', parseInt(value) || 0)}
+                    placeholder={masterDataLoading ? 'Loading genders...' : 'Select Gender'}
+                    required
+                    error={errors.genderId}
+                    options={genders.map(gender => ({
+                      value: gender.id.toString(),
+                      label: gender.name
+                    }))}
+                  />
 
-                <TextAreaField
-                  label="Color/Markings"
-                  value={formData.colorMarkings}
-                  onChange={(value: string) => handleInputChange('colorMarkings', value)}
-                  placeholder="Describe physical appearance and unique markings"
-                  className="md:col-span-2 lg:col-span-3"
-                />
+                  <SelectField
+                    label="Color"
+                    value={formData.colorId}
+                    onChange={(value: string) => handleInputChange('colorId', parseInt(value) || 0)}
+                    placeholder={masterDataLoading ? 'Loading colors...' : 'Select Color'}
+                    error={errors.colorId}
+                    options={colors.map(color => ({
+                      value: color.id.toString(),
+                      label: color.name
+                    }))}
+                  />
+
+                  <InputField
+                    label="Age (Years)"
+                    value={formData.ageYears}
+                    onChange={(value: number) => handleInputChange('ageYears', value)}
+                    type="number"
+                    min="0"
+                    placeholder="Enter age in years"
+                  />
+
+                  <InputField
+                    label="Date of Entry"
+                    value={formData.dateOfEntry}
+                    onChange={(value: string) => handleInputChange('dateOfEntry', value)}
+                    type="date"
+                    required
+                    error={errors.dateOfEntry}
+                  />
+                </div>
+              </div>
+
+            {/* Gaushala */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-3">
+                <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
+                  <Home className="h-5 w-5 text-blue-600" />
+                </div>
+                🏠 Gaushala
+              </h2>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  <SelectField
+                    label="Select Gaushala"
+                    value={formData.gaushalaId}
+                    onChange={(value: string) => handleInputChange('gaushalaId', parseInt(value) || 0)}
+                    placeholder={masterDataLoading ? 'Loading locations...' : 'Select Gaushala'}
+                    required
+                    error={errors.gaushalaId}
+                    options={locations.map(location => ({
+                      value: location.id.toString(),
+                      label: location.name
+                    }))}
+                  />
+                </div>
+              </div>
+
+            {/* Physical Characteristics */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-3">
+                <div className="h-10 w-10 bg-purple-100 rounded-full flex items-center justify-center">
+                  <Ruler className="h-5 w-5 text-purple-600" />
+                </div>
+                📏 Physical Characteristics
+              </h2>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  <InputField
+                    label="Weight (kg)"
+                    value={formData.weight}
+                    onChange={(value: string) => handleInputChange('weight', value)}
+                    type="number"
+                    step="0.1"
+                    placeholder="Weight in kilograms"
+                  />
+
+                  <InputField
+                    label="Height (cm)"
+                    value={formData.height}
+                    onChange={(value: string) => handleInputChange('height', value)}
+                    type="number"
+                    placeholder="Height in centimeters"
+                  />
+
+                  <SelectField
+                    label="Horn Status"
+                    value={formData.hornStatus}
+                    onChange={(value: string) => handleInputChange('hornStatus', value)}
+                    placeholder="Select Status"
+                    options={[
+                      { value: 'horned', label: 'Horned' },
+                      { value: 'dehorned', label: 'Dehorned' },
+                      { value: 'polled', label: 'Polled (Naturally hornless)' }
+                    ]}
+                  />
+
+                  <div className="lg:col-span-2">
+                    <label className="block text-sm font-medium text-gray-800 mb-2">
+                      RFID Tag Number <span className="text-red-500">*</span>
+                    </label>
+                    <div className="flex gap-3">
+                      <input
+                        type="text"
+                        value={formData.rfidTagNo}
+                        onChange={(e) => handleInputChange('rfidTagNo', e.target.value)}
+                        placeholder="Scan or enter RFID tag"
+                        className={`flex-1 px-4 py-3.5 bg-white border-2 rounded-xl transition-all duration-200 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 hover:border-gray-300 ${
+                          errors.rfidTagNo ? 'border-red-300 bg-red-50' : 'border-gray-200'
+                        }`}
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={handleScanRfid}
+                        disabled={isScanning}
+                        className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+                      >
+                        <Scan className="h-5 w-5" />
+                        {isScanning ? 'Scanning...' : 'Scan'}
+                      </button>
+                    </div>
+                    {errors.rfidTagNo && (
+                      <div className="flex items-center gap-2 text-sm text-red-600 mt-2">
+                        <AlertCircle className="h-4 w-4" />
+                        {errors.rfidTagNo}
+                      </div>
+                    )}
+                  </div>
+
+                  <InputField
+                    label="Ear Tag Number"
+                    value={formData.earTagNumber}
+                    onChange={(value: string) => handleInputChange('earTagNumber', value)}
+                    placeholder="Ear tag number"
+                  />
+
+                  <InputField
+                    label="Microchip Number"
+                    value={formData.microchipNumber}
+                    onChange={(value: string) => handleInputChange('microchipNumber', value)}
+                    placeholder="Microchip number"
+                  />
+                </div>
+              </div>
+
+            {/* Health & Medical Records */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-3">
+                <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
+                  <Activity className="h-5 w-5 text-blue-600" />
+                </div>
+                🩺 Health & Medical Records
+              </h2>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  <InputField
+                    label="Vaccination Status"
+                    value={formData.vaccinationStatus}
+                    onChange={(value: string) => handleInputChange('vaccinationStatus', value)}
+                    placeholder="e.g., FMD, HS completed"
+                  />
+
+                  <InputField
+                    label="Disability / Injury"
+                    value={formData.disability}
+                    onChange={(value: string) => handleInputChange('disability', value)}
+                    placeholder="Any disabilities or injuries"
+                  />
+
+                  <InputField
+                    label="Veterinarian Name"
+                    value={formData.veterinarianName}
+                    onChange={(value: string) => handleInputChange('veterinarianName', value)}
+                    placeholder="Name of attending veterinarian"
+                  />
+
+                  <InputField
+                    label="Veterinarian Contact"
+                    value={formData.veterinarianContact}
+                    onChange={(value: string) => handleInputChange('veterinarianContact', value)}
+                    type="tel"
+                    placeholder="Phone number"
+                  />
+
+                  <InputField
+                    label="Last Health Check-up"
+                    value={formData.lastHealthCheckup}
+                    onChange={(value: string) => handleInputChange('lastHealthCheckup', value)}
+                    type="date"
+                  />
+
+                  <InputField
+                    label="Deworming Schedule"
+                    value={formData.dewormingSchedule}
+                    onChange={(value: string) => handleInputChange('dewormingSchedule', value)}
+                    placeholder="e.g., Every 6 months"
+                  />
+
+                  <TextAreaField
+                    label="Medical History"
+                    value={formData.medicalHistory}
+                    onChange={(value: string) => handleInputChange('medicalHistory', value)}
+                    placeholder="Previous medical treatments, surgeries, etc."
+                    className="lg:col-span-3"
+                  />
+                </div>
+              </div>
+
+              {/* Additional Sections Grid */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+
+                {/* Reproductive Details (Female only) */}
+                {genders.find(g => g.name.toLowerCase() === 'female' && g.id === formData.genderId) && (
+                  <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                    <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-3">
+                      <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
+                        <Baby className="h-5 w-5 text-blue-600" />
+                      </div>
+                      🤱 Reproductive Details
+                    </h2>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <SelectField
+                        label="Milking Status"
+                        value={formData.milkingStatus}
+                        onChange={(value: string) => handleInputChange('milkingStatus', value)}
+                        placeholder="Select Status"
+                        options={[
+                          { value: 'lactating', label: 'Lactating' },
+                          { value: 'dry', label: 'Dry' },
+                          { value: 'pregnant', label: 'Pregnant' },
+                          { value: 'not_breeding', label: 'Not for Breeding' }
+                        ]}
+                      />
+
+                      <InputField
+                        label="Milk Yield Per Day (Liters)"
+                        value={formData.milkYieldPerDay}
+                        onChange={(value: string) => handleInputChange('milkYieldPerDay', value)}
+                        type="number"
+                        step="0.1"
+                        placeholder="Daily milk yield"
+                      />
+
+                      <InputField
+                        label="Number of Calves"
+                        value={formData.numberOfCalves}
+                        onChange={(value: string) => handleInputChange('numberOfCalves', value)}
+                        type="number"
+                        placeholder="Total calves born"
+                      />
+
+                      <InputField
+                        label="Lactation Number"
+                        value={formData.lactationNumber}
+                        onChange={(value: string) => handleInputChange('lactationNumber', value)}
+                        type="number"
+                        placeholder="Current lactation number"
+                      />
+
+                      <InputField
+                        label="Last Calving Date"
+                        value={formData.lastCalvingDate}
+                        onChange={(value: string) => handleInputChange('lastCalvingDate', value)}
+                        type="date"
+                      />
+
+                      <SelectField
+                        label="Pregnancy Status"
+                        value={formData.pregnancyStatus}
+                        onChange={(value: string) => handleInputChange('pregnancyStatus', value)}
+                        placeholder="Select Status"
+                        options={[
+                          { value: 'pregnant', label: 'Pregnant' },
+                          { value: 'not_pregnant', label: 'Not Pregnant' },
+                          { value: 'unknown', label: 'Unknown' }
+                        ]}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Origin & Ownership */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                  <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-3">
+                    <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
+                      <Globe className="h-5 w-5 text-blue-600" />
+                    </div>
+                    🌍 Origin & Ownership
+                  </h2>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <SelectField
+                      label="Source of Acquisition"
+                      value={formData.sourceOfAcquisition}
+                      onChange={(value: string) => handleInputChange('sourceOfAcquisition', value)}
+                      placeholder="Select Source"
+                      options={[
+                        { value: 'purchase', label: 'Purchase' },
+                        { value: 'donation', label: 'Donation' },
+                        { value: 'rescue', label: 'Rescue' },
+                        { value: 'transfer', label: 'Transfer' },
+                        { value: 'born_here', label: 'Born Here' }
+                      ]}
+                    />
+
+                    <InputField
+                      label="Previous Owner"
+                      value={formData.previousOwner}
+                      onChange={(value: string) => handleInputChange('previousOwner', value)}
+                      placeholder="Name of previous owner"
+                    />
+
+                    <InputField
+                      label="Date of Acquisition"
+                      value={formData.dateOfAcquisition}
+                      onChange={(value: string) => handleInputChange('dateOfAcquisition', value)}
+                      type="date"
+                    />
+
+                    <SelectField
+                      label="Ownership Status"
+                      value={formData.ownershipStatus}
+                      onChange={(value: string) => handleInputChange('ownershipStatus', value)}
+                      placeholder="Select Status"
+                      options={[
+                        { value: 'owned', label: 'Owned by Gaushala' },
+                        { value: 'fostered', label: 'Fostered' },
+                        { value: 'temporary', label: 'Temporary Care' },
+                        { value: 'sponsored', label: 'Sponsored' }
+                      ]}
+                    />
+                  </div>
+                </div>
+
+                {/* Shelter & Feeding */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+                  <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-3">
+                    <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
+                      <Settings className="h-5 w-5 text-blue-600" />
+                    </div>
+                    🏠 Shelter & Feeding
+                  </h2>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <InputField
+                      label="Shed Number"
+                      value={formData.shedNumber}
+                      onChange={(value: string) => handleInputChange('shedNumber', value)}
+                      placeholder="Assigned shed number"
+                    />
+
+                    <SelectField
+                      label="Type of Feed"
+                      value={formData.typeOfFeed}
+                      onChange={(value: string) => handleInputChange('typeOfFeed', value)}
+                      placeholder="Select Feed Type"
+                      options={[
+                        { value: 'grass', label: 'Grass' },
+                        { value: 'hay', label: 'Hay' },
+                        { value: 'silage', label: 'Silage' },
+                        { value: 'concentrate', label: 'Concentrate' },
+                        { value: 'mixed', label: 'Mixed Feed' }
+                      ]}
+                    />
+
+                    <div className="md:col-span-2">
+                      <TextAreaField
+                        label="Feeding Schedule"
+                        value={formData.feedingSchedule}
+                        onChange={(value: string) => handleInputChange('feedingSchedule', value)}
+                        placeholder="Feeding times and quantities"
+                      />
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Gaushala */}
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-3">
+          {/* Right Sidebar */}
+          <div className="xl:col-span-1 space-y-6">
+
+            {/* Supporting Documents */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 sticky top-4">
+              <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-3">
                 <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
                   <FileText className="h-5 w-5 text-blue-600" />
                 </div>
-                🏠 Gaushala
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <SelectField
-                  label="Select Gaushala"
-                  value={formData.gaushala}
-                  onChange={(value: string) => handleInputChange('gaushala', value)}
-                  placeholder="Select Gaushala"
-                  required
-                  error={errors.gaushala}
-                  options={[
-                    { value: 'main_gaushala', label: 'Main Gaushala' },
-                    { value: 'branch_gaushala_1', label: 'Branch Gaushala 1' },
-                    { value: 'branch_gaushala_2', label: 'Branch Gaushala 2' },
-                    { value: 'temporary_shelter', label: 'Temporary Shelter' }
-                  ]}
-                />
-              </div>
-            </div>
+                📎 Documents
+              </h2>
 
-            {/* Physical Characteristics */}
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-3">
-                <div className="h-10 w-10 bg-purple-100 rounded-full flex items-center justify-center">
-                  <FileText className="h-5 w-5 text-purple-600" />
+                <div className="space-y-6">
+                  <FileUploadField
+                    label="Photo"
+                    value={formData.photoFile}
+                    onChange={(value: File | null) => handleInputChange('photoFile', value)}
+                    accept="image/*"
+                  />
+
+                  <FileUploadField
+                    label="Health Certificate"
+                    value={formData.healthCertificate}
+                    onChange={(value: File | null) => handleInputChange('healthCertificate', value)}
+                    accept=".pdf"
+                  />
+
+                  <FileUploadField
+                    label="Vaccination Record"
+                    value={formData.vaccinationRecord}
+                    onChange={(value: File | null) => handleInputChange('vaccinationRecord', value)}
+                    accept=".pdf"
+                  />
+
+                  <FileUploadField
+                    label="Purchase/Donation Document"
+                    value={formData.purchaseDocument}
+                    onChange={(value: File | null) => handleInputChange('purchaseDocument', value)}
+                    accept=".pdf"
+                  />
                 </div>
-                📏 Physical Characteristics
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <InputField
-                  label="Weight (kg)"
-                  value={formData.weight}
-                  onChange={(value: string) => handleInputChange('weight', value)}
-                  type="number"
-                  step="0.1"
-                  placeholder="Weight in kilograms"
-                />
 
-                <InputField
-                  label="Height (cm)"
-                  value={formData.height}
-                  onChange={(value: string) => handleInputChange('height', value)}
-                  type="number"
-                  placeholder="Height in centimeters"
-                />
-
-                <SelectField
-                  label="Horn Status"
-                  value={formData.hornStatus}
-                  onChange={(value: string) => handleInputChange('hornStatus', value)}
-                  placeholder="Select Status"
-                  options={[
-                    { value: 'horned', label: 'Horned' },
-                    { value: 'dehorned', label: 'Dehorned' },
-                    { value: 'polled', label: 'Polled (Naturally hornless)' }
-                  ]}
-                />
-
-                <div className="lg:col-span-2">
-                  <label className="block text-sm font-medium text-gray-800 mb-2">
-                    RFID Tag Number <span className="text-red-500">*</span>
-                  </label>
-                  <div className="flex gap-3">
-                    <input
-                      type="text"
-                      value={formData.rfidTagNumber}
-                      onChange={(e) => handleInputChange('rfidTagNumber', e.target.value)}
-                      placeholder="Scan or enter RFID tag"
-                      className={`flex-1 px-4 py-3.5 bg-white border-2 rounded-xl transition-all duration-200 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 hover:border-gray-300 ${
-                        errors.rfidTagNumber ? 'border-red-300 bg-red-50' : 'border-gray-200'
-                      }`}
-                      required
-                    />
-                    <button
-                      type="button"
-                      onClick={handleScanRfid}
-                      disabled={isScanning}
-                      className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
-                    >
-                      <Scan className="h-5 w-5" />
-                      {isScanning ? 'Scanning...' : 'Scan'}
-                    </button>
-                  </div>
-                  {errors.rfidTagNumber && (
-                    <div className="flex items-center gap-2 text-sm text-red-600 mt-2">
-                      <span className="text-red-500">⚠</span>
-                      {errors.rfidTagNumber}
+                {/* Quick Stats */}
+                <div className="mt-8 pt-6 border-t border-gray-200">
+                  <h3 className="text-sm font-medium text-gray-700 mb-4">Form Progress</h3>
+                  <div className="space-y-3">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Required Fields</span>
+                      <span className="font-medium text-gray-900">
+                        {Object.keys(errors).length === 0 ? '✓ Complete' : `${Object.keys(errors).length} missing`}
+                      </span>
                     </div>
-                  )}
-                </div>
-
-                <InputField
-                  label="Ear Tag Number"
-                  value={formData.earTagNumber}
-                  onChange={(value: string) => handleInputChange('earTagNumber', value)}
-                  placeholder="Ear tag number"
-                />
-
-                <InputField
-                  label="Microchip Number"
-                  value={formData.microchipNumber}
-                  onChange={(value: string) => handleInputChange('microchipNumber', value)}
-                  placeholder="Microchip number"
-                />
-              </div>
-            </div>
-
-            {/* Health & Medical Records */}
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-3">
-                <div className="h-10 w-10 bg-red-100 rounded-full flex items-center justify-center">
-                  <FileText className="h-5 w-5 text-red-600" />
-                </div>
-                🩺 Health & Medical Records
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <TextAreaField
-                  label="Vaccination Status"
-                  value={formData.vaccinationStatus}
-                  onChange={(value: string) => handleInputChange('vaccinationStatus', value)}
-                  placeholder="List completed vaccinations (e.g., FMD, HS, BQ)"
-                  className="md:col-span-2 lg:col-span-3"
-                />
-
-                <InputField
-                  label="Disability/Injury"
-                  value={formData.disability}
-                  onChange={(value: string) => handleInputChange('disability', value)}
-                  placeholder="Any disabilities or injuries (e.g., None, Limp in left leg)"
-                />
-
-                <InputField
-                  label="Veterinarian Name"
-                  value={formData.veterinarianName}
-                  onChange={(value: string) => handleInputChange('veterinarianName', value)}
-                  placeholder="Regular veterinarian name"
-                />
-
-                <InputField
-                  label="Veterinarian Contact"
-                  value={formData.veterinarianContact}
-                  onChange={(value: string) => handleInputChange('veterinarianContact', value)}
-                  placeholder="+91-9876543210"
-                />
-              </div>
-            </div>
-
-            {/* Reproductive Details */}
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-3">
-                <div className="h-10 w-10 bg-pink-100 rounded-full flex items-center justify-center">
-                  <FileText className="h-5 w-5 text-pink-600" />
-                </div>
-                🤱 Reproductive Details
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <SelectField
-                  label="Reproductive Status"
-                  value={formData.reproductiveStatus}
-                  onChange={(value: string) => handleInputChange('reproductiveStatus', value)}
-                  placeholder="Select Status"
-                  options={[
-                    { value: 'breeding', label: 'Breeding' },
-                    { value: 'pregnant', label: 'Pregnant' },
-                    { value: 'dry', label: 'Dry' },
-                    { value: 'heifer', label: 'Heifer' },
-                    { value: 'bull', label: 'Bull' }
-                  ]}
-                />
-
-                <InputField
-                  label="Last Calving Date"
-                  value={formData.lastCalvingDate}
-                  onChange={(value: string) => handleInputChange('lastCalvingDate', value)}
-                  type="date"
-                />
-
-                <SelectField
-                  label="Pregnancy Status"
-                  value={formData.pregnancyStatus}
-                  onChange={(value: string) => handleInputChange('pregnancyStatus', value)}
-                  placeholder="Select Status"
-                  options={[
-                    { value: 'not_pregnant', label: 'Not Pregnant' },
-                    { value: 'pregnant', label: 'Pregnant' },
-                    { value: 'uncertain', label: 'Uncertain' }
-                  ]}
-                />
-
-                <TextAreaField
-                  label="Breeding History"
-                  value={formData.breedingHistory}
-                  onChange={(value: string) => handleInputChange('breedingHistory', value)}
-                  placeholder="Breeding history and notes"
-                />
-              </div>
-            </div>
-
-            {/* Origin & Ownership */}
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-3">
-                <div className="h-10 w-10 bg-emerald-100 rounded-full flex items-center justify-center">
-                  <FileText className="h-5 w-5 text-emerald-600" />
-                </div>
-                🌍 Origin & Ownership
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <InputField
-                  label="Source Location"
-                  value={formData.sourceLocation}
-                  onChange={(value: string) => handleInputChange('sourceLocation', value)}
-                  placeholder="Where the cattle came from"
-                />
-
-                <InputField
-                  label="Previous Owner"
-                  value={formData.previousOwner}
-                  onChange={(value: string) => handleInputChange('previousOwner', value)}
-                  placeholder="Previous owner name"
-                />
-
-                <InputField
-                  label="Acquisition Date"
-                  value={formData.acquisitionDate}
-                  onChange={(value: string) => handleInputChange('acquisitionDate', value)}
-                  type="date"
-                />
-
-                <SelectField
-                  label="Ownership Status"
-                  value={formData.ownershipStatus}
-                  onChange={(value: string) => handleInputChange('ownershipStatus', value)}
-                  placeholder="Select Status"
-                  options={[
-                    { value: 'owned', label: 'Owned' },
-                    { value: 'donated', label: 'Donated' },
-                    { value: 'rescued', label: 'Rescued' },
-                    { value: 'temporary_care', label: 'Temporary Care' }
-                  ]}
-                />
-              </div>
-            </div>
-
-            {/* Shelter & Feeding */}
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-3">
-                <div className="h-10 w-10 bg-amber-100 rounded-full flex items-center justify-center">
-                  <FileText className="h-5 w-5 text-amber-600" />
-                </div>
-                🏠 Shelter & Feeding
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                <InputField
-                  label="Shed Number"
-                  value={formData.shedNumber}
-                  onChange={(value: string) => handleInputChange('shedNumber', value)}
-                  placeholder="e.g., Shed-A1, Shed-B2"
-                />
-
-                <SelectField
-                  label="Type of Feed"
-                  value={formData.typeOfFeed}
-                  onChange={(value: string) => handleInputChange('typeOfFeed', value)}
-                  placeholder="Select Feed Type"
-                  options={[
-                    { value: 'grass', label: 'Grass' },
-                    { value: 'hay', label: 'Hay' },
-                    { value: 'silage', label: 'Silage' },
-                    { value: 'concentrate', label: 'Concentrate' },
-                    { value: 'mixed', label: 'Mixed Feed' }
-                  ]}
-                />
-
-                <TextAreaField
-                  label="Feeding Schedule"
-                  value={formData.feedingSchedule}
-                  onChange={(value: string) => handleInputChange('feedingSchedule', value)}
-                  placeholder="Detailed feeding schedule and quantities"
-                  className="md:col-span-2 lg:col-span-3"
-                />
-              </div>
-            </div>
-
-            {/* Supporting Documents */}
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-3">
-                <div className="h-10 w-10 bg-indigo-100 rounded-full flex items-center justify-center">
-                  <FileText className="h-5 w-5 text-indigo-600" />
-                </div>
-                📄 Supporting Documents
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-800">Cattle Photo</label>
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
-                    <Upload className="mx-auto h-12 w-12 text-gray-400" />
-                    <div className="mt-4">
-                      <button type="button" className="text-blue-600 hover:text-blue-500">
-                        Upload photo
-                      </button>
-                      <p className="text-xs text-gray-500 mt-1">PNG, JPG up to 10MB</p>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Documents</span>
+                      <span className="font-medium text-gray-900">
+                        {[formData.photoFile, formData.healthCertificate, formData.vaccinationRecord, formData.purchaseDocument].filter(Boolean).length}/4
+                      </span>
                     </div>
                   </div>
                 </div>
-
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-800">Health Certificate</label>
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
-                    <Upload className="mx-auto h-12 w-12 text-gray-400" />
-                    <div className="mt-4">
-                      <button type="button" className="text-blue-600 hover:text-blue-500">
-                        Upload certificate
-                      </button>
-                      <p className="text-xs text-gray-500 mt-1">PDF up to 5MB</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-800">Purchase Document</label>
-                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-gray-400 transition-colors">
-                    <Upload className="mx-auto h-12 w-12 text-gray-400" />
-                    <div className="mt-4">
-                      <button type="button" className="text-blue-600 hover:text-blue-500">
-                        Upload document
-                      </button>
-                      <p className="text-xs text-gray-500 mt-1">PDF up to 5MB</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex justify-start gap-4 pt-6 border-t border-gray-100">
-              <button
-                type="button"
-                onClick={handleCancel}
-                className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                <Save className="h-4 w-4" />
-                {isLoading ? 'Updating...' : 'Update Cattle Record'}
-              </button>
             </div>
           </div>
-        </form>
-      </div>
+        </div>
+      </form>
     </div>
   );
 }

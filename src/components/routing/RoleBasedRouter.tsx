@@ -27,6 +27,17 @@ const RoleBasedRouter: React.FC = () => {
         return '/executive-dashboard'
       }
 
+      // Check if user has biogas-related roles from backend
+      const hasBiogasRole = user.role === 'cluster_manager' ||
+                           user.appType === 'biogassangh' ||
+                           (user.roles && user.roles.some((r: string) =>
+                             r === 'BIOGAS_SANGH' || r === 'CLUSTER_MANAGER'))
+
+      // Prioritize biogas users to go to cluster dashboard
+      if (hasBiogasRole) {
+        return '/cluster'
+      }
+
       // Route based on app type
       switch (user.appType) {
         case 'gausakhi':

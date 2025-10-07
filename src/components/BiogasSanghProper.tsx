@@ -1,5 +1,5 @@
 import { useNavigate, useLocation } from 'react-router-dom'
-import { BarChart3, Factory, Weight, Gavel, CreditCard, Clock, Receipt, Bell } from 'lucide-react'
+import { BarChart3, Factory, Weight, Gavel, CreditCard, Clock, Receipt, Bell, History } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import BaseLayout from '../components/layout/BaseLayout'
 
@@ -11,6 +11,7 @@ import DisputeResolution from '../pages/biogassangh/DisputeResolution'
 import PaymentReconciliation from '../pages/biogassangh/PaymentReconciliation'
 import PickupScheduler from '../pages/biogassangh/PickupScheduler'
 import TransactionEntry from '../pages/biogassangh/TransactionEntry'
+import TransactionHistory from '../pages/biogassangh/TransactionHistory'
 import AlertsManagement from '../pages/biogassangh/AlertsManagement'
 
 
@@ -71,6 +72,13 @@ const BiogasSangh = () => {
       isActive: location.pathname === '/cluster/transactions'
     },
     {
+      id: 'transaction-history',
+      label: 'Transaction History',
+      icon: <History className="w-4 h-4" />,
+      onClick: () => navigate('/cluster/transaction-history'),
+      isActive: location.pathname === '/cluster/transaction-history'
+    },
+    {
       id: 'alerts',
       label: 'Alerts Management',
       icon: <Bell className="w-4 h-4" />,
@@ -111,6 +119,10 @@ const BiogasSangh = () => {
 
     if (currentPath === '/cluster/transactions') {
       return <TransactionEntry />
+    }
+
+    if (currentPath === '/cluster/transaction-history') {
+      return <TransactionHistory />
     }
 
     if (currentPath === '/cluster/alerts') {

@@ -5,12 +5,24 @@
  */
 
 import { ReactNode, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { Search, Bell, Menu, X, LogOut } from 'lucide-react';
+import { Search, Bell, Menu, X, LogOut, Loader2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { profileService } from '@/services/admin/profile.service';
+import { toast } from 'sonner';
+import { logger } from '@/utils/logger';
 
 export interface NavigationItem {
   id: string;
@@ -58,14 +70,44 @@ export default function BaseLayout({
   contentClassName
 }: BaseLayoutProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [showLogoutDialog, setShowLogoutDialog] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const { logout } = useAuth();
+  const navigate = useNavigate();
 
-  const handleLogout = async () => {
+  const handleLogoutClick = () => {
+    setShowLogoutDialog(true);
+  };
+
+  const handleLogoutConfirm = async () => {
     try {
+      setIsLoggingOut(true);
+
+      // Call ProfileService logout (real Auth Service API)
+      await profileService.logout();
+
+      // Also call AuthContext logout to clear local state
       await logout();
+
+      toast.success('Logged out successfully');
+
+      // Navigate to login page
+      navigate('/login');
     } catch (error) {
-      console.error('Logout error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Logout failed';
+      logger.error('Logout error:', error);
+      toast.error(errorMessage);
+
+      // Even on error, we should navigate to login since tokens are cleared
+      navigate('/login');
+    } finally {
+      setIsLoggingOut(false);
+      setShowLogoutDialog(false);
     }
+  };
+
+  const handleLogoutCancel = () => {
+    setShowLogoutDialog(false);
   };
 
   return (
@@ -231,7 +273,7 @@ export default function BaseLayout({
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={handleLogout}
+                  onClick={handleLogoutClick}
                   className="text-gray-600 hover:text-red-600 hover:bg-red-50"
                   title="Logout"
                 >
@@ -279,6 +321,44 @@ export default function BaseLayout({
           {children}
         </main>
       </div>
+
+      {/* Logout Confirmation Dialog */}
+      <Dialog open={showLogoutDialog} onOpenChange={setShowLogoutDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirm Logout</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to logout? You will need to login again to access your account.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={handleLogoutCancel}
+              disabled={isLoggingOut}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleLogoutConfirm}
+              disabled={isLoggingOut}
+            >
+              {isLoggingOut ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Logging out...
+                </>
+              ) : (
+                <>
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Logout
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

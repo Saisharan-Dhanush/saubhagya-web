@@ -18,7 +18,7 @@ export default function Login() {
 
     try {
       await login(phone, password)
-      // Redirect to dashboard after successful login
+      // Redirect to root - RoleBasedRouter will handle user-specific routing
       console.log('Login successful, redirecting to dashboard')
       navigate('/')
     } catch (error) {

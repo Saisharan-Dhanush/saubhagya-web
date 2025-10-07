@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { PlatformProvider } from './contexts/PlatformContext'
+import { Toaster } from 'sonner'
 import Login from './pages/Login'
 import AdminModule from './modules/admin/Admin.container'
 import Admin from './pages/Admin'
@@ -99,6 +100,7 @@ function App() {
       <PlatformProvider>
         <Router>
           <AppRoutes />
+          <Toaster position="top-right" richColors closeButton />
         </Router>
       </PlatformProvider>
     </AuthProvider>

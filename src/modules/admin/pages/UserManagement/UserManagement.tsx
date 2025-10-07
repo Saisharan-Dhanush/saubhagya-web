@@ -1,289 +1,277 @@
-import React, { useState } from 'react';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import React, { useState, useEffect } from 'react';
+import { Users, Search, Plus, Edit, Trash2, Shield, ToggleLeft, ToggleRight } from 'lucide-react';
+import { userManagementService, UserProfile, PaginatedUsersResponse } from '@/services/admin/user-management.service';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Select } from '@/components/ui/select';
-import { Users, UserPlus, Edit, Trash2, Search, Filter } from 'lucide-react';
-
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-  status: 'active' | 'inactive' | 'suspended';
-  lastLogin: string;
-  createdDate: string;
-}
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { toast } from 'sonner';
 
 const UserManagement: React.FC = () => {
+  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [roleFilter, setRoleFilter] = useState('all');
+  const [currentPage, setCurrentPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalElements, setTotalElements] = useState(0);
+  const pageSize = 10;
 
-  const mockUsers: User[] = [
-    {
-      id: '1',
-      name: 'Rajesh Kumar',
-      email: 'rajesh@gaushala.com',
-      role: 'Gaushala Admin',
-      status: 'active',
-      lastLogin: '2 hours ago',
-      createdDate: '2024-01-15'
-    },
-    {
-      id: '2',
-      name: 'Priya Sharma',
-      email: 'priya@biogas.com',
-      role: 'Biogas Sangh',
-      status: 'active',
-      lastLogin: '1 day ago',
-      createdDate: '2024-02-10'
-    },
-    {
-      id: '3',
-      name: 'Amit Patel',
-      email: 'amit@sales.com',
-      role: 'Sales Representative',
-      status: 'inactive',
-      lastLogin: '1 week ago',
-      createdDate: '2024-01-20'
-    },
-    {
-      id: '4',
-      name: 'Sunita Devi',
-      email: 'sunita@purification.com',
-      role: 'Purification Operator',
-      status: 'active',
-      lastLogin: '3 hours ago',
-      createdDate: '2024-03-05'
-    },
-    {
-      id: '5',
-      name: 'Dr. Suresh Verma',
-      email: 'suresh@admin.com',
-      role: 'Super Admin',
-      status: 'active',
-      lastLogin: '30 minutes ago',
-      createdDate: '2023-12-01'
-    }
-  ];
+  useEffect(() => {
+    fetchUsers();
+  }, [currentPage, searchTerm]);
 
-  const getStatusBadge = (status: User['status']) => {
-    switch (status) {
-      case 'active':
-        return <Badge className="bg-green-500">Active</Badge>;
-      case 'inactive':
-        return <Badge className="bg-gray-500">Inactive</Badge>;
-      case 'suspended':
-        return <Badge className="bg-red-500">Suspended</Badge>;
+  const fetchUsers = async () => {
+    try {
+      setLoading(true);
+      const response: PaginatedUsersResponse = await userManagementService.getUsers(
+        currentPage,
+        pageSize,
+        searchTerm || undefined
+      );
+
+      setUsers(response.users);
+      setTotalPages(response.totalPages);
+      setTotalElements(response.totalElements);
+    } catch (error) {
+      console.error('Failed to fetch users:', error);
+      toast.error('Failed to load users', {
+        description: error instanceof Error ? error.message : 'Unknown error occurred'
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
-  const getRoleBadge = (role: string) => {
-    const roleColors: Record<string, string> = {
-      'Super Admin': 'bg-purple-500',
-      'Gaushala Admin': 'bg-blue-500',
-      'Biogas Sangh': 'bg-green-500',
-      'Sales Representative': 'bg-orange-500',
-      'Purification Operator': 'bg-cyan-500',
-      'Viewer': 'bg-gray-500'
-    };
-    return <Badge className={roleColors[role] || 'bg-gray-500'}>{role}</Badge>;
+  const handleToggleStatus = async (userId: string) => {
+    try {
+      await userManagementService.toggleUserStatus(userId);
+      toast.success('User status updated');
+      fetchUsers(); // Refresh the list
+    } catch (error) {
+      toast.error('Failed to update user status', {
+        description: error instanceof Error ? error.message : 'Unknown error occurred'
+      });
+    }
   };
 
-  const filteredUsers = mockUsers.filter(user => {
-    const matchesSearch = user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         user.email.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesRole = roleFilter === 'all' || user.role === roleFilter;
-    return matchesSearch && matchesRole;
-  });
+  const handleDeleteUser = async (userId: string, userName: string) => {
+    if (!window.confirm(`Are you sure you want to delete user "${userName}"?`)) {
+      return;
+    }
+
+    try {
+      await userManagementService.deleteUser(userId);
+      toast.success('User deleted successfully');
+      fetchUsers(); // Refresh the list
+    } catch (error) {
+      toast.error('Failed to delete user', {
+        description: error instanceof Error ? error.message : 'Unknown error occurred'
+      });
+    }
+  };
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    setCurrentPage(0); // Reset to first page on new search
+  };
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      {/* Header */}
+      <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">User Management</h1>
           <p className="text-muted-foreground">
             Manage users, roles, and permissions across the platform
           </p>
         </div>
-        <Button className="flex items-center gap-2">
-          <UserPlus className="h-4 w-4" />
+        <Button className="gap-2">
+          <Plus className="h-4 w-4" />
           Add User
         </Button>
       </div>
 
+      {/* Search Bar */}
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5" />
-            User Directory
-          </CardTitle>
-          <CardDescription>
-            Total {mockUsers.length} users across all roles
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex gap-4 mb-6">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search users by name or email..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
+        <CardContent className="pt-6">
+          <form onSubmit={handleSearch} className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Search by name, phone, or email..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+              />
             </div>
-            <div className="w-48">
-              <select
-                value={roleFilter}
-                onChange={(e) => setRoleFilter(e.target.value)}
-                className="w-full px-3 py-2 border border-input bg-background rounded-md"
-              >
-                <option value="all">All Roles</option>
-                <option value="Super Admin">Super Admin</option>
-                <option value="Gaushala Admin">Gaushala Admin</option>
-                <option value="Biogas Sangh">Biogas Sangh</option>
-                <option value="Sales Representative">Sales Representative</option>
-                <option value="Purification Operator">Purification Operator</option>
-                <option value="Viewer">Viewer</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="border rounded-lg overflow-hidden">
-            <table className="w-full">
-              <thead className="bg-muted/50">
-                <tr className="border-b">
-                  <th className="text-left p-4 font-medium">User</th>
-                  <th className="text-left p-4 font-medium">Role</th>
-                  <th className="text-left p-4 font-medium">Status</th>
-                  <th className="text-left p-4 font-medium">Last Login</th>
-                  <th className="text-left p-4 font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredUsers.map((user) => (
-                  <tr key={user.id} className="border-b hover:bg-muted/30">
-                    <td className="p-4">
-                      <div>
-                        <p className="font-medium">{user.name}</p>
-                        <p className="text-sm text-muted-foreground">{user.email}</p>
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      {getRoleBadge(user.role)}
-                    </td>
-                    <td className="p-4">
-                      {getStatusBadge(user.status)}
-                    </td>
-                    <td className="p-4">
-                      <div>
-                        <p className="text-sm">{user.lastLogin}</p>
-                        <p className="text-xs text-muted-foreground">
-                          Created: {new Date(user.createdDate).toLocaleDateString()}
-                        </p>
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <div className="flex gap-2">
-                        <Button variant="ghost" size="sm">
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {filteredUsers.length === 0 && (
-            <div className="text-center py-12">
-              <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground">No users found matching your criteria</p>
-            </div>
-          )}
+            <Button type="submit">Search</Button>
+          </form>
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {/* Stats Cards */}
+      <div className="grid gap-4 md:grid-cols-3">
         <Card>
-          <CardHeader>
-            <CardTitle>Role Distribution</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Users</CardTitle>
+            <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="text-sm">Gaushala Admin</span>
-                <Badge variant="secondary">1</Badge>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm">Biogas Sangh</span>
-                <Badge variant="secondary">1</Badge>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm">Sales Rep</span>
-                <Badge variant="secondary">1</Badge>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm">Purification Op</span>
-                <Badge variant="secondary">1</Badge>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm">Super Admin</span>
-                <Badge variant="secondary">1</Badge>
-              </div>
+            <div className="text-2xl font-bold">{totalElements}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Active Users</CardTitle>
+            <ToggleRight className="h-4 w-4 text-green-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {users.filter(u => u.isActive).length}
             </div>
           </CardContent>
         </Card>
-
         <Card>
-          <CardHeader>
-            <CardTitle>User Activity</CardTitle>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Current Page</CardTitle>
+            <Shield className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="text-sm">Active Users</span>
-                <Badge className="bg-green-500">4</Badge>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm">Inactive Users</span>
-                <Badge className="bg-gray-500">1</Badge>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm">Recent Logins</span>
-                <Badge variant="secondary">3</Badge>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Quick Actions</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              <Button variant="outline" className="w-full justify-start">
-                Export User List
-              </Button>
-              <Button variant="outline" className="w-full justify-start">
-                Bulk Import Users
-              </Button>
-              <Button variant="outline" className="w-full justify-start">
-                Role Permissions
-              </Button>
+            <div className="text-2xl font-bold">
+              {currentPage + 1} / {totalPages || 1}
             </div>
           </CardContent>
         </Card>
       </div>
+
+      {/* Users Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Users</CardTitle>
+          <CardDescription>
+            {loading ? 'Loading...' : `Showing ${users.length} users`}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            </div>
+          ) : users.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              No users found
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b">
+                    <th className="text-left py-3 px-4 font-medium">Name</th>
+                    <th className="text-left py-3 px-4 font-medium">Phone</th>
+                    <th className="text-left py-3 px-4 font-medium">Email</th>
+                    <th className="text-left py-3 px-4 font-medium">Roles</th>
+                    <th className="text-left py-3 px-4 font-medium">Status</th>
+                    <th className="text-left py-3 px-4 font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map((user) => (
+                    <tr key={user.id} className="border-b hover:bg-muted/50">
+                      <td className="py-3 px-4">
+                        <div>
+                          <div className="font-medium">{user.name}</div>
+                          <div className="text-xs text-muted-foreground">
+                            ID: {user.externalId}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-3 px-4">{user.phone}</td>
+                      <td className="py-3 px-4">{user.email || '-'}</td>
+                      <td className="py-3 px-4">
+                        <div className="flex flex-wrap gap-1">
+                          {user.roles.map((role) => (
+                            <Badge key={role} variant="secondary" className="text-xs">
+                              {role}
+                            </Badge>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="py-3 px-4">
+                        <Badge
+                          variant={user.isActive ? 'default' : 'secondary'}
+                          className={user.isActive ? 'bg-green-600' : ''}
+                        >
+                          {user.isActive ? 'Active' : 'Inactive'}
+                        </Badge>
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="flex gap-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleToggleStatus(user.id)}
+                            title="Toggle Status"
+                          >
+                            {user.isActive ? (
+                              <ToggleRight className="h-4 w-4" />
+                            ) : (
+                              <ToggleLeft className="h-4 w-4" />
+                            )}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Edit User"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDeleteUser(user.id, user.name)}
+                            title="Delete User"
+                            className="text-destructive hover:text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Pagination */}
+          {!loading && totalPages > 1 && (
+            <div className="flex items-center justify-between mt-4 pt-4 border-t">
+              <div className="text-sm text-muted-foreground">
+                Showing {currentPage * pageSize + 1} to{' '}
+                {Math.min((currentPage + 1) * pageSize, totalElements)} of {totalElements} users
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(currentPage - 1)}
+                  disabled={currentPage === 0}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage(currentPage + 1)}
+                  disabled={currentPage >= totalPages - 1}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 };

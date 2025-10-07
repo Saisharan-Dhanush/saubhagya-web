@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Alert, AlertDescription } from '../../components/ui/alert';
 import { Progress } from '../../components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
+import biogasService, { DungCollectionRequest } from '../../services/biogasService';
 import {
   Camera,
   Scale,
@@ -1386,11 +1387,26 @@ const PhotoCapture: React.FC<{
   );
 };
 
+// Quality grade to rate mapping (matching backend validation)
+const QUALITY_RATE_MAP: Record<string, number[]> = {
+  'gradeA': [15.00, 16.00, 17.00],
+  'gradeB': [12.00, 13.00, 14.00],
+  'gradeC': [9.00, 10.00, 11.00],
+  'gradeD': [6.00, 7.00, 8.00]
+};
+
+// Get default rate for quality grade (first rate in the allowed list)
+const getDefaultRateForGrade = (grade: string): number => {
+  return QUALITY_RATE_MAP[grade]?.[0] || 12.00;
+};
+
 export const TransactionEntry: React.FC<TransactionEntryProps> = ({ languageContext }) => {
   const [activeTab, setActiveTab] = useState('new');
 
   // Enhanced form state with additional fields
   const [formData, setFormData] = useState({
+    clusterId: '',
+    gaushalaId: '',
     farmerId: '',
     farmerName: '',
     farmerAadhaar: '',
@@ -1402,7 +1418,7 @@ export const TransactionEntry: React.FC<TransactionEntryProps> = ({ languageCont
     moistureContent: 15,
     paymentMethod: 'cash' as PaymentMethod,
     paymentStatus: 'pending' as PaymentStatus,
-    ratePerKg: 8.50,
+    ratePerKg: getDefaultRateForGrade('gradeB'),
     advanceAmount: 0,
     notes: ''
   });
@@ -1433,6 +1449,17 @@ export const TransactionEntry: React.FC<TransactionEntryProps> = ({ languageCont
   };
 
   const handleSaveTransaction = async () => {
+    // Validation
+    if (!formData.clusterId) {
+      alert('Please enter Cluster ID');
+      return;
+    }
+
+    if (!formData.gaushalaId) {
+      alert('Please enter Gaushala ID');
+      return;
+    }
+
     if (formData.measuredWeight === 0) {
       alert('Please capture weight first');
       return;
@@ -1446,44 +1473,69 @@ export const TransactionEntry: React.FC<TransactionEntryProps> = ({ languageCont
     setIsSaving(true);
 
     try {
-      const transactionData: Partial<TransactionData> = {
-        ...formData,
-        totalAmount: calculateTotalAmount(),
-        balanceAmount: calculateBalanceAmount(),
-        photos: capturedPhotos,
-        measurementDate: new Date().toISOString(),
-        collectionDate: new Date().toISOString(),
-        status: 'pending' as TransactionStatus,
-        qualityVerificationStatus: 'pending' as QualityVerificationStatus
+      // Map quality grade from frontend format (gradeA) to backend format (A)
+      const qualityGradeMap: Record<string, 'A' | 'B' | 'C' | 'D'> = {
+        'gradeA': 'A',
+        'gradeB': 'B',
+        'gradeC': 'C'
       };
 
-      await createTransaction(transactionData);
+      // Map payment method from frontend format to backend format
+      const paymentMethodMap: Record<string, 'UPI' | 'CASH' | 'BANK_TRANSFER'> = {
+        'cash': 'CASH',
+        'online': 'UPI',
+        'bank_transfer': 'BANK_TRANSFER',
+        'upi': 'UPI'
+      };
 
-      setSaveSuccess(true);
-      setTimeout(() => {
-        setSaveSuccess(false);
-        // Reset form
-        setFormData({
-          farmerId: '',
-          farmerName: '',
-          farmerAadhaar: '',
-          location: '',
-          phoneNumber: '',
-          dungType: 'cow',
-          measuredWeight: 0,
-          qualityGrade: 'gradeB',
-          moistureContent: 15,
-          paymentMethod: 'cash' as PaymentMethod,
-          paymentStatus: 'pending' as PaymentStatus,
-          ratePerKg: 8.50,
-          advanceAmount: 0,
-          notes: ''
-        });
-        setCapturedPhotos([]);
-      }, 2000);
+      // Prepare API request
+      const apiRequest: DungCollectionRequest = {
+        clusterId: formData.clusterId,
+        gaushalaId: parseInt(formData.gaushalaId),
+        collectionDate: new Date().toISOString(),
+        weightKg: formData.measuredWeight,
+        qualityGrade: qualityGradeMap[formData.qualityGrade] || 'B',
+        qualityNotes: formData.notes || undefined,
+        ratePerKg: formData.ratePerKg,
+        paymentMethod: paymentMethodMap[formData.paymentMethod] || 'CASH',
+        paymentRef: undefined
+      };
+
+      // Call the real API
+      const response = await biogasService.createDungCollection(apiRequest);
+
+      if (response.success) {
+        setSaveSuccess(true);
+        setTimeout(() => {
+          setSaveSuccess(false);
+          // Reset form
+          setFormData({
+            clusterId: '',
+            gaushalaId: '',
+            farmerId: '',
+            farmerName: '',
+            farmerAadhaar: '',
+            location: '',
+            phoneNumber: '',
+            dungType: 'cow',
+            measuredWeight: 0,
+            qualityGrade: 'gradeB',
+            moistureContent: 15,
+            paymentMethod: 'cash' as PaymentMethod,
+            paymentStatus: 'pending' as PaymentStatus,
+            ratePerKg: getDefaultRateForGrade('gradeB'),
+            advanceAmount: 0,
+            notes: ''
+          });
+          setCapturedPhotos([]);
+        }, 2000);
+      } else {
+        alert(`Failed to save transaction: ${response.error}`);
+      }
 
     } catch (error) {
       console.error('Failed to save transaction:', error);
+      alert('Failed to save transaction. Please try again.');
     } finally {
       setIsSaving(false);
     }
@@ -1592,6 +1644,29 @@ export const TransactionEntry: React.FC<TransactionEntryProps> = ({ languageCont
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
+                    <Label htmlFor="clusterId">Cluster ID *</Label>
+                    <Input
+                      id="clusterId"
+                      value={formData.clusterId}
+                      onChange={(e) => setFormData(prev => ({ ...prev, clusterId: e.target.value }))}
+                      placeholder="Enter UUID"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="gaushalaId">Gaushala ID *</Label>
+                    <Input
+                      id="gaushalaId"
+                      type="number"
+                      value={formData.gaushalaId}
+                      onChange={(e) => setFormData(prev => ({ ...prev, gaushalaId: e.target.value }))}
+                      placeholder="Enter number"
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
                     <Label htmlFor="farmerId">{t('farmerId')}</Label>
                     <Input
                       id="farmerId"
@@ -1665,7 +1740,7 @@ export const TransactionEntry: React.FC<TransactionEntryProps> = ({ languageCont
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="qualityGrade">{t('qualityGrade')}</Label>
-                    <Select value={formData.qualityGrade} onValueChange={(value) => setFormData(prev => ({ ...prev, qualityGrade: value }))}>
+                    <Select value={formData.qualityGrade} onValueChange={(value) => setFormData(prev => ({ ...prev, qualityGrade: value, ratePerKg: getDefaultRateForGrade(value) }))}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
@@ -1806,7 +1881,7 @@ export const TransactionEntry: React.FC<TransactionEntryProps> = ({ languageCont
           <div className="flex justify-end">
             <Button
               onClick={handleSaveTransaction}
-              disabled={isSaving || formData.measuredWeight === 0 || capturedPhotos.length === 0}
+              disabled={isSaving || !formData.clusterId || !formData.gaushalaId || formData.measuredWeight === 0 || capturedPhotos.length === 0}
               className="w-48"
             >
               {isSaving ? (

@@ -29,7 +29,18 @@ import {
   LogIn,
   LogOut
 } from 'lucide-react';
-import { gauShalaApi } from '../../services/gaushala/api';
+import {
+  cattleApi,
+  masterDataApi,
+  calculateAgeFromDob,
+  type Cattle,
+  type Breed,
+  type Species,
+  type Gender,
+  type Color,
+  type Location as GaushalaLocation
+} from '../../services/gaushala/api';
+import { getLoggedInUserGaushalaId, getCurrentUserContext } from '../../utils/auth';
 import { useNavigate } from 'react-router-dom';
 import CowDungTransaction from '../../components/gaushala/CowDungTransaction';
 import TransactionHistory from '../../components/gaushala/TransactionHistory';
@@ -40,7 +51,8 @@ interface LanguageContextType {
   t: (key: string) => string;
 }
 
-interface Cattle {
+// Legacy interface for backwards compatibility with transaction components
+interface CattleLegacy {
   id: string;
   rfidTag: string;
   name: string;
@@ -273,9 +285,24 @@ interface Props {
 export default function CattleManagement({ languageContext }: Props) {
   const { language } = languageContext;
   const navigate = useNavigate();
+
+  // User context
+  const userContext = getCurrentUserContext();
+  const userGaushalaId = getLoggedInUserGaushalaId();
+
+  // State management
   const [cattle, setCattle] = useState<Cattle[]>([]);
   const [filteredCattle, setFilteredCattle] = useState<Cattle[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Master data state
+  const [breeds, setBreeds] = useState<Breed[]>([]);
+  const [species, setSpecies] = useState<Species[]>([]);
+  const [genders, setGenders] = useState<Gender[]>([]);
+  const [colors, setColors] = useState<Color[]>([]);
+  const [locations, setLocations] = useState<GaushalaLocation[]>([]);
+
+  // Modal state
   const [showViewModal, setShowViewModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showTransactionModal, setShowTransactionModal] = useState(false);
@@ -291,6 +318,8 @@ export default function CattleManagement({ languageContext }: Props) {
   const logsPerPage = 8;
   const [editFormData, setEditFormData] = useState<any>({});
   const [isUpdating, setIsUpdating] = useState(false);
+
+  // Filter state
   const [filter, setFilter] = useState<CattleFilter>({
     search: '',
     health: '',
@@ -298,70 +327,134 @@ export default function CattleManagement({ languageContext }: Props) {
     owner: '',
     status: '',
     isActive: null,
-    gaushalaId: undefined // No default filter - show all cattle
+    gaushalaId: undefined
   });
 
   const t = (key: string): string => {
     return translations[language][key as keyof typeof translations['en']] || key;
   };
 
+  // Load cattle data and master data on component mount
   useEffect(() => {
     loadCattleData();
+    loadMasterData();
   }, []);
 
+  // Apply filters whenever cattle or filter state changes
   useEffect(() => {
     applyFilters();
   }, [cattle, filter]);
 
+  /**
+   * Load all cattle from Gaushala Service
+   * Automatically filters by user's gaushalaId if available
+   */
   const loadCattleData = async () => {
     try {
       setLoading(true);
 
-      // Fetch cattle data from API
-      const response = await gauShalaApi.cattle.getAllCattle();
+      // Fetch cattle from Gaushala Service (port 8086)
+      const response = await cattleApi.getAllCattle(0, 10000);
 
       if (response.success && response.data) {
-        setCattle(response.data);
+        const allCattle = response.data.content || [];
+
+        // Filter by logged-in user's gaushala if gaushalaId is available
+        const ownedCattle = userGaushalaId
+          ? allCattle.filter(c => c.gaushalaId === userGaushalaId)
+          : allCattle;
+
+        console.log(`Loaded ${ownedCattle.length} cattle records`);
+        setCattle(ownedCattle);
       } else {
         console.error('Failed to fetch cattle data:', response.error);
+        setCattle([]);
       }
     } catch (error) {
       console.error('Error loading cattle data:', error);
+      setCattle([]);
     } finally {
       setLoading(false);
     }
   };
 
+  /**
+   * Load master data for displaying breed/species/gender/color names
+   */
+  const loadMasterData = async () => {
+    try {
+      const [breedsRes, speciesRes, gendersRes, colorsRes, locationsRes] = await Promise.all([
+        masterDataApi.getAllBreeds(),
+        masterDataApi.getAllSpecies(),
+        masterDataApi.getAllGenders(),
+        masterDataApi.getAllColors(),
+        masterDataApi.getAllLocations(),
+      ]);
+
+      if (breedsRes.success && breedsRes.data) setBreeds(breedsRes.data);
+      if (speciesRes.success && speciesRes.data) setSpecies(speciesRes.data);
+      if (gendersRes.success && gendersRes.data) setGenders(gendersRes.data);
+      if (colorsRes.success && colorsRes.data) setColors(colorsRes.data);
+      if (locationsRes.success && locationsRes.data) setLocations(locationsRes.data);
+    } catch (error) {
+      console.error('Error loading master data:', error);
+    }
+  };
+
+  /**
+   * Helper functions to get master data names by ID
+   */
+  const getBreedName = (breedId: number): string => {
+    const breed = breeds.find(b => b.id === breedId);
+    return breed?.name || `Breed #${breedId}`;
+  };
+
+  const getSpeciesName = (speciesId: number): string => {
+    const sp = species.find(s => s.id === speciesId);
+    return sp?.name || `Species #${speciesId}`;
+  };
+
+  const getGenderName = (genderId: number): string => {
+    const gender = genders.find(g => g.id === genderId);
+    return gender?.name || `Gender #${genderId}`;
+  };
+
+  const getColorName = (colorId: number): string => {
+    const color = colors.find(c => c.id === colorId);
+    return color?.name || `Color #${colorId}`;
+  };
+
+  const getGaushalaName = (gaushalaId: number): string => {
+    const location = locations.find(l => l.id === gaushalaId);
+    return location?.name || `Gaushala #${gaushalaId}`;
+  };
+
+  /**
+   * Apply all active filters to cattle list
+   * Works with new Cattle interface using IDs for breeds, species, etc.
+   */
   const applyFilters = () => {
     let filtered = [...cattle];
 
-    // Search filter
+    // Search filter - search by name, RFID tag, or unique animal ID
     if (filter.search) {
+      const searchLower = filter.search.toLowerCase();
       filtered = filtered.filter(c =>
-        c.name.toLowerCase().includes(filter.search.toLowerCase()) ||
-        c.rfidTag.toLowerCase().includes(filter.search.toLowerCase()) ||
-        c.owner.toLowerCase().includes(filter.search.toLowerCase())
+        c.name.toLowerCase().includes(searchLower) ||
+        (c.rfidTagNo && c.rfidTagNo.toLowerCase().includes(searchLower)) ||
+        c.uniqueAnimalId.toLowerCase().includes(searchLower) ||
+        getBreedName(c.breedId).toLowerCase().includes(searchLower)
       );
     }
 
-    // Health filter
+    // Health status filter
     if (filter.health) {
-      filtered = filtered.filter(c => c.health === filter.health);
+      filtered = filtered.filter(c => c.healthStatus === filter.health);
     }
 
-    // Breed filter
+    // Breed filter (by breed name)
     if (filter.breed) {
-      filtered = filtered.filter(c => c.breed === filter.breed);
-    }
-
-    // Owner filter
-    if (filter.owner) {
-      filtered = filtered.filter(c => c.owner === filter.owner);
-    }
-
-    // Status filter (IN/OUT/UNKNOWN)
-    if (filter.status) {
-      filtered = filtered.filter(c => c.currentStatus === filter.status);
+      filtered = filtered.filter(c => getBreedName(c.breedId) === filter.breed);
     }
 
     // Active status filter
@@ -369,11 +462,10 @@ export default function CattleManagement({ languageContext }: Props) {
       filtered = filtered.filter(c => c.isActive === filter.isActive);
     }
 
-    // Gaushala filter - only show cattle belonging to specific gaushala
+    // Gaushala filter - already filtered at load time by userGaushalaId
+    // Additional gaushalaId filter can be applied if needed
     if (filter.gaushalaId) {
-      // For now, we'll filter by ownerId (assuming ownerId represents gaushala membership)
-      // This can be enhanced later with proper gaushala-cattle relationship data
-      filtered = filtered.filter(c => c.ownerId === filter.gaushalaId);
+      filtered = filtered.filter(c => c.gaushalaId === parseInt(filter.gaushalaId));
     }
 
     setFilteredCattle(filtered);
@@ -790,29 +882,33 @@ export default function CattleManagement({ languageContext }: Props) {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
-                        <span className="text-2xl">🐄</span>
+                        {cattle.photoUrl ? (
+                          <img src={cattle.photoUrl} alt={cattle.name} className="h-10 w-10 rounded-full object-cover" />
+                        ) : (
+                          <span className="text-2xl">🐄</span>
+                        )}
                       </div>
                       <div className="ml-3">
                         <div className="text-sm font-medium text-gray-900">{cattle.name}</div>
-                        <div className="text-sm text-gray-500">ID: {cattle.id}</div>
+                        <div className="text-sm text-gray-500">ID: {cattle.uniqueAnimalId}</div>
                       </div>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       <Wifi className="h-4 w-4 text-blue-500 mr-2" />
-                      <span className="text-sm font-mono text-gray-900">{cattle.rfidTag || cattle.tagId || cattle.id}</span>
+                      <span className="text-sm font-mono text-gray-900">{cattle.rfidTagNo || 'No RFID'}</span>
                     </div>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{cattle.breed}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{cattle.age} {t('years')}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{cattle.weight} {t('kg')}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{getBreedName(cattle.breedId)}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{calculateAgeFromDob(cattle.dob)} {t('years')}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{cattle.weight || 'N/A'} {cattle.weight ? t('kg') : ''}</td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getHealthColor(cattle.health)}`}>
-                      {t(cattle.health)}
+                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getHealthColor(cattle.healthStatus || 'unknown')}`}>
+                      {t(cattle.healthStatus || 'unknown')}
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{cattle.owner}</td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{getGaushalaName(cattle.gaushalaId)}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex items-center space-x-2">
                       <button

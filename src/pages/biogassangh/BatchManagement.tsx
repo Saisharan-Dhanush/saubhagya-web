@@ -24,9 +24,10 @@ import {
   Eye,
   Download
 } from 'lucide-react';
+import biogasService, { ProductionBatch, CreateBatchRequest, CompleteBatchRequest } from '../../services/biogasService';
 
-// Mock types for BatchManagement
-type BatchStatus = 'processing' | 'ready' | 'transferred' | 'rejected' | 'testing';
+// Mock types for BatchManagement (will be replaced with backend types)
+type BatchStatus = 'processing' | 'ready' | 'transferred' | 'rejected' | 'testing' | 'SCHEDULED' | 'IN_PRODUCTION' | 'COMPLETED' | 'QUALITY_TESTED' | 'READY_FOR_SALE';
 
 interface BatchData {
   id: string;
@@ -362,18 +363,53 @@ const getStatusColor = (status: BatchStatus): string => {
 const getStatusIcon = (status: BatchStatus) => {
   switch (status) {
     case 'processing':
+    case 'IN_PRODUCTION':
       return <Clock className="w-4 h-4" />;
     case 'ready':
+    case 'READY_FOR_SALE':
       return <CheckCircle className="w-4 h-4" />;
     case 'transferred':
+    case 'COMPLETED':
       return <Truck className="w-4 h-4" />;
     case 'rejected':
       return <AlertCircle className="w-4 h-4" />;
     case 'testing':
+    case 'QUALITY_TESTED':
       return <Package className="w-4 h-4" />;
+    case 'SCHEDULED':
+      return <Clock className="w-4 h-4" />;
     default:
       return <Package className="w-4 h-4" />;
   }
+};
+
+// Helper function to map backend batch status to frontend
+const mapBackendStatusToFrontend = (backendStatus: string): BatchStatus => {
+  switch (backendStatus) {
+    case 'SCHEDULED':
+      return 'testing';
+    case 'IN_PRODUCTION':
+      return 'processing';
+    case 'COMPLETED':
+      return 'transferred';
+    case 'QUALITY_TESTED':
+      return 'testing';
+    case 'READY_FOR_SALE':
+      return 'ready';
+    default:
+      return 'processing';
+  }
+};
+
+// Helper function to calculate quality score from batch data
+const calculateQualityScore = (batch: ProductionBatch): number => {
+  if (!batch.methaneContentPercent) return 0;
+
+  // Simple quality calculation based on methane content and efficiency
+  const methaneScore = (batch.methaneContentPercent / 70) * 60; // Max 60 points
+  const efficiencyScore = ((batch.productionEfficiencyPercent || 0) / 100) * 40; // Max 40 points
+
+  return Math.min(100, Math.round(methaneScore + efficiencyScore));
 };
 
 const BatchForm: React.FC<{
@@ -496,12 +532,60 @@ export const BatchManagement: React.FC<BatchManagementProps> = ({ languageContex
   const [editingBatch, setEditingBatch] = useState<BatchData | null>(null);
   const [deletingBatch, setDeletingBatch] = useState<BatchData | null>(null);
 
+  // Backend integration state
+  const [backendBatches, setBackendBatches] = useState<ProductionBatch[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const clusterId = 'a1b2c3d4-e5f6-4a5b-8c9d-0e1f2a3b4c5d'; // From seed data
+
   const lang = languageContext?.language || 'en';
   const t = (key: string): string => {
     return languageContext?.t(key) || translations[lang][key as keyof typeof translations[typeof lang]] || key;
   };
 
-  const filteredBatches = batches.filter(batch => {
+  // Fetch batches from backend
+  useEffect(() => {
+    const fetchBatches = async () => {
+      setLoading(true);
+      try {
+        const response = await biogasService.getBatches(clusterId, undefined, 0, 50);
+        if (response.success && response.data) {
+          setBackendBatches(response.data.content);
+          setError(null);
+        } else {
+          console.error('Failed to fetch batches:', response.error);
+          setError(response.error || 'Failed to fetch batches');
+        }
+      } catch (err) {
+        console.error('Error fetching batches:', err);
+        setError('Network error while fetching batches');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchBatches();
+  }, [clusterId]);
+
+  // Map backend batches to frontend format
+  const mappedBatches: BatchData[] = backendBatches.map(batch => ({
+    id: batch.batchNumber,
+    digesterId: `DIG-${batch.id}`,
+    volume: batch.biogasProducedCubicMeters || 0,
+    methaneContent: batch.methaneContentPercent || 0,
+    status: mapBackendStatusToFrontend(batch.batchStatus),
+    createdDate: batch.productionStartDate,
+    transferDate: batch.productionEndDate,
+    qualityScore: calculateQualityScore(batch),
+    farmerName: 'Farmer', // TODO: Get from contributions
+    source: `Cluster ${batch.clusterId}`,
+    notes: batch.notes || ''
+  }));
+
+  // Use mapped batches or fallback to mock data
+  const batchesToDisplay = backendBatches.length > 0 ? mappedBatches : batches;
+
+  const filteredBatches = batchesToDisplay.filter(batch => {
     const matchesSearch = batch.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          batch.digesterId.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          batch.farmerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -511,29 +595,53 @@ export const BatchManagement: React.FC<BatchManagementProps> = ({ languageContex
   });
 
   const handleCreateBatch = async (data: Partial<BatchData>) => {
-    await createBatch(data);
-    setIsCreateDialogOpen(false);
+    try {
+      const request: CreateBatchRequest = {
+        clusterId: clusterId,
+        sourceContributions: [], // TODO: Add contribution IDs
+        totalInputWeightKg: data.volume || 0,
+        productionStartDate: new Date().toISOString(),
+        notes: data.notes
+      };
+
+      const response = await biogasService.createBatch(request);
+      if (response.success) {
+        setIsCreateDialogOpen(false);
+        // Refresh batches
+        const refreshResponse = await biogasService.getBatches(clusterId);
+        if (refreshResponse.success && refreshResponse.data) {
+          setBackendBatches(refreshResponse.data.content);
+        }
+      } else {
+        setError(response.error || 'Failed to create batch');
+      }
+    } catch (err) {
+      console.error('Error creating batch:', err);
+      setError('Network error while creating batch');
+    }
   };
 
   const handleUpdateBatch = async (data: Partial<BatchData>) => {
     if (editingBatch) {
-      await updateBatch(editingBatch.id, data);
+      // TODO: Implement update batch API
+      console.log('Update batch:', editingBatch.id, data);
       setEditingBatch(null);
     }
   };
 
   const handleDeleteBatch = async () => {
     if (deletingBatch) {
-      await deleteBatch(deletingBatch.id);
+      // TODO: Implement delete batch API
+      console.log('Delete batch:', deletingBatch.id);
       setDeletingBatch(null);
     }
   };
 
-  const activeBatches = batches.filter(b => b.status === 'processing' || b.status === 'testing');
-  const readyBatches = batches.filter(b => b.status === 'ready');
-  const transferredBatches = batches.filter(b => b.status === 'transferred');
-  const totalVolume = batches.reduce((sum, b) => sum + b.volume, 0);
-  const averageQuality = batches.filter(b => b.qualityScore).reduce((sum, b) => sum + (b.qualityScore || 0), 0) / batches.filter(b => b.qualityScore).length;
+  const activeBatches = batchesToDisplay.filter(b => b.status === 'processing' || b.status === 'testing' || b.status === 'IN_PRODUCTION');
+  const readyBatches = batchesToDisplay.filter(b => b.status === 'ready' || b.status === 'READY_FOR_SALE');
+  const transferredBatches = batchesToDisplay.filter(b => b.status === 'transferred' || b.status === 'COMPLETED');
+  const totalVolume = batchesToDisplay.reduce((sum, b) => sum + b.volume, 0);
+  const averageQuality = batchesToDisplay.filter(b => b.qualityScore).reduce((sum, b) => sum + (b.qualityScore || 0), 0) / batchesToDisplay.filter(b => b.qualityScore).length || 0;
 
   return (
     <div className="space-y-6">
