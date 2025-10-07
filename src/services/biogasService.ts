@@ -269,6 +269,65 @@ export interface DungCollectionRequest {
   paymentRef?: string;
 }
 
+// ==========================================
+// Alert & Notification Management Types (Story 11.1 - AC-61 to AC-68)
+// ==========================================
+
+export interface AlertConfigurationRequest {
+  clusterId: string;
+  alertType: string;
+  severity: string;
+  thresholdValue?: number;
+  description?: string;
+  enabled?: boolean;
+}
+
+export interface AlertConfigurationResponse {
+  id: string;
+  clusterId: string;
+  alertType: string;
+  severity: string;
+  thresholdValue?: number;
+  enabled: boolean;
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AlertResponse {
+  id: string;
+  alertConfigId?: string;
+  clusterId: string;
+  alertType: string;
+  severity: string;
+  message: string;
+  triggeredAt: string;
+  acknowledgedAt?: string;
+  acknowledgedBy?: string;
+  resolvedAt?: string;
+  resolvedBy?: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AlertActionRequest {
+  actionTaken: string;
+  resolutionNotes?: string;
+}
+
+export interface AlertPageResponse {
+  content: AlertResponse[];
+  totalElements: number;
+  totalPages: number;
+  size: number;
+  number: number;
+  pageable?: any;
+  last?: boolean;
+  first?: boolean;
+  empty?: boolean;
+}
+
 /**
  * Dashboard Service
  */
@@ -1047,6 +1106,218 @@ export const biogasService = {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to create dung collection'
+      };
+    }
+  },
+
+  // ==========================================
+  // Alert & Notification Management APIs (Story 11.1 - AC-61 to AC-68)
+  // ==========================================
+
+  /**
+   * Get alert configurations for a cluster (AC-68)
+   * GET /api/v1/alerts/configurations
+   */
+  async getAlertConfigurations(clusterId: string): Promise<ApiResponse<AlertConfigurationResponse[]>> {
+    try {
+      const response = await fetch(`${BIOGAS_SERVICE_URL}/alerts/configurations?clusterId=${clusterId}`, {
+        method: 'GET',
+        headers: getAuthHeaders()
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return {
+        success: data.success || true,
+        data: data.data || data,
+        message: data.message
+      };
+    } catch (error) {
+      console.error('Failed to fetch alert configurations:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to fetch alert configurations'
+      };
+    }
+  },
+
+  /**
+   * Create alert configuration (AC-61)
+   * POST /api/v1/alerts/configurations
+   */
+  async createAlertConfiguration(request: AlertConfigurationRequest): Promise<ApiResponse<AlertConfigurationResponse>> {
+    try {
+      const response = await fetch(`${BIOGAS_SERVICE_URL}/alerts/configurations`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(request)
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return {
+        success: data.success || true,
+        data: data.data || data,
+        message: data.message
+      };
+    } catch (error) {
+      console.error('Failed to create alert configuration:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to create alert configuration'
+      };
+    }
+  },
+
+  /**
+   * Get active alerts for a cluster (AC-62)
+   * GET /api/v1/alerts/active
+   */
+  async getActiveAlerts(
+    clusterId: string,
+    severity?: string,
+    page = 0,
+    size = 20
+  ): Promise<ApiResponse<AlertPageResponse>> {
+    try {
+      const params = new URLSearchParams({
+        clusterId,
+        page: page.toString(),
+        size: size.toString()
+      });
+      if (severity) params.append('severity', severity);
+
+      const response = await fetch(`${BIOGAS_SERVICE_URL}/alerts/active?${params.toString()}`, {
+        method: 'GET',
+        headers: getAuthHeaders()
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return {
+        success: data.success || true,
+        data: data.data || data,
+        message: data.message
+      };
+    } catch (error) {
+      console.error('Failed to fetch active alerts:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to fetch active alerts'
+      };
+    }
+  },
+
+  /**
+   * Acknowledge alert (AC-63)
+   * PUT /api/v1/alerts/{id}/acknowledge
+   */
+  async acknowledgeAlert(alertId: string): Promise<ApiResponse<AlertResponse>> {
+    try {
+      const response = await fetch(`${BIOGAS_SERVICE_URL}/alerts/${alertId}/acknowledge`, {
+        method: 'PUT',
+        headers: getAuthHeaders()
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return {
+        success: data.success || true,
+        data: data.data || data,
+        message: data.message
+      };
+    } catch (error) {
+      console.error('Failed to acknowledge alert:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to acknowledge alert'
+      };
+    }
+  },
+
+  /**
+   * Resolve alert with action (AC-64)
+   * PUT /api/v1/alerts/{id}/resolve
+   */
+  async resolveAlert(alertId: string, request: AlertActionRequest): Promise<ApiResponse<AlertResponse>> {
+    try {
+      const response = await fetch(`${BIOGAS_SERVICE_URL}/alerts/${alertId}/resolve`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(request)
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return {
+        success: data.success || true,
+        data: data.data || data,
+        message: data.message
+      };
+    } catch (error) {
+      console.error('Failed to resolve alert:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to resolve alert'
+      };
+    }
+  },
+
+  /**
+   * Get alert history (AC-67)
+   * GET /api/v1/alerts/history
+   */
+  async getAlertHistory(
+    clusterId: string,
+    startDate?: string,
+    endDate?: string,
+    page = 0,
+    size = 20
+  ): Promise<ApiResponse<AlertPageResponse>> {
+    try {
+      const params = new URLSearchParams({
+        clusterId,
+        page: page.toString(),
+        size: size.toString()
+      });
+      if (startDate) params.append('startDate', startDate);
+      if (endDate) params.append('endDate', endDate);
+
+      const response = await fetch(`${BIOGAS_SERVICE_URL}/alerts/history?${params.toString()}`, {
+        method: 'GET',
+        headers: getAuthHeaders()
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return {
+        success: data.success || true,
+        data: data.data || data,
+        message: data.message
+      };
+    } catch (error) {
+      console.error('Failed to fetch alert history:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to fetch alert history'
       };
     }
   }
