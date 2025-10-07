@@ -436,7 +436,7 @@ export default function AddCattle({ languageContext }: AddCattleProps) {
             className="flex items-center gap-2 px-4 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
           >
             <ArrowLeft className="h-5 w-5" />
-            <span className="font-medium">Back</span>
+            <span className="font-medium">Backkkk</span>
           </button>
 
           <div className="h-8 w-px bg-gray-300"></div>
