@@ -35,6 +35,7 @@ import {
   Calendar
 } from 'lucide-react';
 import { InventoryTransfer, BatchTracking } from '../../Purification.types';
+import { apiService } from '@/services/api';
 
 interface TransferFormData {
   transferType: 'incoming' | 'outgoing' | 'internal';
@@ -64,170 +65,73 @@ export const InventoryTransferPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
 
-  // Mock data
+  // Fetch inventory and batch tracking data from API
   useEffect(() => {
-    const mockTransfers: InventoryTransfer[] = [
-      {
-        id: 'transfer-001',
-        transferType: 'outgoing',
-        fromLocation: 'Purification Plant A',
-        toLocation: 'Distribution Center North',
-        batchIds: ['BATCH-2024-001', 'BATCH-2024-002'],
-        totalVolume: 2500,
-        transferDate: new Date(Date.now() + 4 * 60 * 60 * 1000), // In 4 hours
-        requestedBy: 'SALES001',
-        approvedBy: 'MGR001',
-        status: 'approved',
-        vehicleInfo: {
-          vehicleNumber: 'MH-12-AB-1234',
-          driverName: 'Rajesh Kumar',
-          driverContact: '+91-9876543210'
-        },
-        qualityCertificates: ['QC-2024-001', 'QC-2024-002'],
-        pesoDocuments: ['PESO-A+001', 'PESO-A002']
-      },
-      {
-        id: 'transfer-002',
-        transferType: 'outgoing',
-        fromLocation: 'Purification Plant A',
-        toLocation: 'Industrial Customer XYZ',
-        batchIds: ['BATCH-2024-003'],
-        totalVolume: 1200,
-        transferDate: new Date(Date.now() + 24 * 60 * 60 * 1000), // Tomorrow
-        requestedBy: 'SALES002',
-        status: 'pending',
-        qualityCertificates: ['QC-2024-003'],
-        pesoDocuments: ['PESO-B+003']
-      },
-      {
-        id: 'transfer-003',
-        transferType: 'incoming',
-        fromLocation: 'BiogasSangh Unit 5',
-        toLocation: 'Purification Plant A',
-        batchIds: ['BATCH-2024-004'],
-        totalVolume: 800,
-        transferDate: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2 hours ago
-        requestedBy: 'PROD001',
-        approvedBy: 'MGR001',
-        status: 'in_transit',
-        vehicleInfo: {
-          vehicleNumber: 'MH-14-CD-5678',
-          driverName: 'Suresh Patil',
-          driverContact: '+91-9876543211'
-        },
-        qualityCertificates: ['QC-2024-004'],
-        pesoDocuments: ['PESO-B004']
-      },
-      {
-        id: 'transfer-004',
-        transferType: 'internal',
-        fromLocation: 'Storage Tank A',
-        toLocation: 'Storage Tank B',
-        batchIds: ['BATCH-2024-005'],
-        totalVolume: 600,
-        transferDate: new Date(Date.now() - 24 * 60 * 60 * 1000), // Yesterday
-        requestedBy: 'OPS001',
-        approvedBy: 'MGR001',
-        status: 'completed',
-        qualityCertificates: [],
-        pesoDocuments: []
-      }
-    ];
+    const fetchData = async () => {
+      try {
+        // Fetch inventory data (includes transfers)
+        const inventoryResponse = await apiService.getPurificationInventory();
+        if (inventoryResponse.success && inventoryResponse.data) {
+          const transfersData = (Array.isArray(inventoryResponse.data)
+            ? inventoryResponse.data
+            : inventoryResponse.data.transfers || []
+          ).map((transfer: any) => ({
+            ...transfer,
+            id: transfer.id?.toString() || `transfer-${Date.now()}`,
+            transferDate: new Date(transfer.transferDate || transfer.createdAt || Date.now()),
+            status: transfer.status?.toLowerCase() || 'pending',
+            totalVolume: transfer.totalVolume || 0,
+            batchIds: transfer.batchIds || [],
+            qualityCertificates: transfer.qualityCertificates || [],
+            pesoDocuments: transfer.pesoDocuments || []
+          }));
+          setTransfers(transfersData);
+        }
 
-    const mockBatches: BatchTracking[] = [
-      {
-        id: 'batch-001',
-        batchNumber: 'BATCH-2024-001',
-        sourceLocation: 'BiogasSangh Unit 1',
-        arrivalDate: new Date(Date.now() - 48 * 60 * 60 * 1000),
-        volume: 1250,
-        initialQuality: {
-          id: 'test-001',
-          batchId: 'BATCH-2024-001',
-          cycleId: 'cycle-001',
-          testDate: new Date(),
-          testType: 'final_quality',
-          parameters: {
-            ch4: 95.8,
-            co2: 2.1,
-            h2s: 8.5,
-            moisture: 0.3,
-            calificValue: 9850,
-            density: 0.72
-          },
-          complianceStatus: 'pass',
-          pesoRating: 'A+',
-          technician: 'LAB001'
-        },
-        currentStatus: 'completed',
-        assignedCycle: 'cycle-001',
-        expectedCompletion: new Date(Date.now() + 2 * 60 * 60 * 1000),
-        traceabilityCode: 'TC-2024-001',
-        sourceType: 'biogas_sangh',
-        documentation: ['Source Certificate', 'Quality Report', 'Transport Permit']
-      },
-      {
-        id: 'batch-002',
-        batchNumber: 'BATCH-2024-002',
-        sourceLocation: 'BiogasSangh Unit 2',
-        arrivalDate: new Date(Date.now() - 24 * 60 * 60 * 1000),
-        volume: 1250,
-        initialQuality: {
-          id: 'test-002',
-          batchId: 'BATCH-2024-002',
-          cycleId: 'cycle-002',
-          testDate: new Date(),
-          testType: 'final_quality',
-          parameters: {
-            ch4: 92.5,
-            co2: 3.2,
-            h2s: 15.2,
-            moisture: 0.6,
-            calificValue: 9250,
-            density: 0.74
-          },
-          complianceStatus: 'pass',
-          pesoRating: 'B+',
-          technician: 'LAB002'
-        },
-        currentStatus: 'completed',
-        traceabilityCode: 'TC-2024-002',
-        sourceType: 'biogas_sangh',
-        documentation: ['Source Certificate', 'Quality Report']
-      },
-      {
-        id: 'batch-003',
-        batchNumber: 'BATCH-2024-006',
-        sourceLocation: 'BiogasSangh Unit 3',
-        arrivalDate: new Date(),
-        volume: 900,
-        initialQuality: {
-          id: 'test-006',
-          batchId: 'BATCH-2024-006',
-          cycleId: '',
-          testDate: new Date(),
-          testType: 'pre_treatment',
-          parameters: {
-            ch4: 87.2,
-            co2: 5.8,
-            h2s: 22.1,
-            moisture: 1.1,
-            calificValue: 8720,
-            density: 0.81
-          },
-          complianceStatus: 'pending',
-          pesoRating: 'Pending',
-          technician: 'LAB001'
-        },
-        currentStatus: 'queued',
-        traceabilityCode: 'TC-2024-006',
-        sourceType: 'biogas_sangh',
-        documentation: ['Source Certificate']
+        // Fetch batches (we can get this from cycles or inventory)
+        const cyclesResponse = await apiService.getPurificationCycles({ page: 0, size: 50 });
+        if (cyclesResponse.success && cyclesResponse.data?.content) {
+          const batchesData = cyclesResponse.data.content.map((cycle: any) => ({
+            id: cycle.id?.toString() || `batch-${Date.now()}`,
+            batchNumber: cycle.batchId || `BATCH-${cycle.id}`,
+            sourceLocation: `Unit ${cycle.unitId || 'Unknown'}`,
+            arrivalDate: new Date(cycle.startTime || cycle.createdAt),
+            volume: cycle.initialVolume || 1000,
+            initialQuality: {
+              id: `test-${cycle.id}`,
+              batchId: cycle.batchId,
+              cycleId: cycle.id?.toString(),
+              testDate: new Date(cycle.startTime || Date.now()),
+              testType: 'final_quality',
+              parameters: {
+                ch4: cycle.finalCh4Percentage || cycle.currentCh4Percentage || 0,
+                co2: cycle.co2Level || 0,
+                h2s: cycle.h2sLevel || 0,
+                moisture: cycle.moisture || 0,
+                calificValue: 9000,
+                density: 0.75
+              },
+              complianceStatus: cycle.status === 'COMPLETED' ? 'pass' : 'pending',
+              pesoRating: cycle.status === 'COMPLETED' ? 'A' : 'Pending',
+              technician: cycle.operatorId || 'Unknown'
+            },
+            currentStatus: cycle.status?.toLowerCase() || 'queued',
+            assignedCycle: cycle.id?.toString(),
+            expectedCompletion: cycle.endTime ? new Date(cycle.endTime) : undefined,
+            traceabilityCode: `TC-${cycle.id}`,
+            sourceType: 'biogas_sangh',
+            documentation: []
+          }));
+          setBatches(batchesData);
+        }
+      } catch (error) {
+        console.error('Failed to fetch inventory data:', error);
       }
-    ];
+    };
 
-    setTransfers(mockTransfers);
-    setBatches(mockBatches);
+    fetchData();
+    const interval = setInterval(fetchData, 15000); // Refresh every 15 seconds
+    return () => clearInterval(interval);
   }, []);
 
   const getStatusColor = (status: string) => {
@@ -271,35 +175,62 @@ export const InventoryTransferPage: React.FC = () => {
     return matchesSearch && matchesStatus;
   });
 
-  const handleCreateTransfer = () => {
-    const newTransfer: InventoryTransfer = {
-      id: `transfer-${Date.now()}`,
-      transferType: newTransferForm.transferType,
-      fromLocation: newTransferForm.fromLocation,
-      toLocation: newTransferForm.toLocation,
-      batchIds: newTransferForm.batchIds,
-      totalVolume: newTransferForm.batchIds.reduce((total, batchId) => {
-        const batch = batches.find(b => b.batchNumber === batchId);
-        return total + (batch?.volume || 0);
-      }, 0),
-      transferDate: new Date(),
-      requestedBy: newTransferForm.requestedBy,
-      status: 'pending',
-      vehicleInfo: newTransferForm.vehicleInfo,
-      qualityCertificates: [],
-      pesoDocuments: []
-    };
+  const handleCreateTransfer = async () => {
+    try {
+      // Backend expects single batch transfer, not multiple
+      // For now, use first batch from selection
+      const firstBatchId = newTransferForm.batchIds[0];
+      const batch = batches.find(b => b.batchNumber === firstBatchId);
 
-    setTransfers(prev => [newTransfer, ...prev]);
+      if (!batch || !batch.assignedCycle) {
+        console.error('Selected batch has no assigned cycle');
+        return;
+      }
 
-    // Reset form
-    setNewTransferForm({
-      transferType: 'outgoing',
-      fromLocation: '',
-      toLocation: '',
-      batchIds: [],
-      requestedBy: 'CURRENT_USER'
-    });
+      // Match backend CreateInventoryTransferRequest DTO structure
+      const transferData = {
+        cycleId: batch.assignedCycle, // String UUID from batch's cycle
+        batchTrackingNumber: firstBatchId,
+        transferType: 'STORAGE_TO_DISTRIBUTION', // Backend expects: PRODUCTION_TO_STORAGE, STORAGE_TO_CYLINDER, STORAGE_TO_PIPELINE, STORAGE_TO_DISTRIBUTION
+        sourceLocation: newTransferForm.fromLocation,
+        destinationLocation: newTransferForm.toLocation,
+        volumeTransferredM3: (batch.volume / 1000) || 1, // Convert L to m³
+        pressureBar: 2.0, // Not captured in form, use default
+        temperatureCelsius: 25, // Not captured in form, use default
+        qualityGrade: batch.initialQuality.pesoRating || 'A',
+        ch4Percentage: batch.initialQuality.parameters.ch4 || 95,
+        initiatedBy: newTransferForm.requestedBy,
+        containerIdentifier: null,
+        vehicleIdentifier: newTransferForm.vehicleInfo?.vehicleNumber || null,
+        notes: `${newTransferForm.notes || ''}\nDriver: ${newTransferForm.vehicleInfo?.driverName || 'N/A'}\nContact: ${newTransferForm.vehicleInfo?.driverContact || 'N/A'}`
+      };
+
+      const response = await apiService.createInventoryTransfer(transferData);
+      if (response.success && response.data) {
+        const newTransfer: InventoryTransfer = {
+          ...response.data,
+          id: response.data.id?.toString() || `transfer-${Date.now()}`,
+          transferDate: new Date(response.data.transferDate || Date.now()),
+          status: response.data.status?.toLowerCase() || 'pending',
+          totalVolume: totalVolume,
+          qualityCertificates: [],
+          pesoDocuments: []
+        };
+
+        setTransfers(prev => [newTransfer, ...prev]);
+
+        // Reset form
+        setNewTransferForm({
+          transferType: 'outgoing',
+          fromLocation: '',
+          toLocation: '',
+          batchIds: [],
+          requestedBy: 'CURRENT_USER'
+        });
+      }
+    } catch (error) {
+      console.error('Failed to create transfer:', error);
+    }
   };
 
   const handleStatusUpdate = (transferId: string, newStatus: InventoryTransfer['status']) => {

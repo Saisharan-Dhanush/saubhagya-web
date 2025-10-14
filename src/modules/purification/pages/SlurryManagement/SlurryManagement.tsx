@@ -37,6 +37,7 @@ import {
 } from 'lucide-react';
 import { SlurryOutput } from '../../Purification.types';
 import { SLURRY_DESTINATIONS } from '../../Purification.config';
+import { apiService } from '@/services/api';
 
 interface SlurryFormData {
   cycleId: string;
@@ -72,102 +73,38 @@ export const SlurryManagement: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterDestination, setFilterDestination] = useState<string>('all');
 
-  // Mock data
+  // Fetch slurry outputs from API
   useEffect(() => {
-    const mockSlurryOutputs: SlurryOutput[] = [
-      {
-        id: 'slurry-001',
-        cycleId: 'cycle-001',
-        outputDate: new Date(Date.now() - 24 * 60 * 60 * 1000), // Yesterday
-        volume: 150,
-        qualityGrade: 'high',
-        destination: 'fertilizer',
-        collectionScheduled: new Date(Date.now() + 2 * 60 * 60 * 1000), // In 2 hours
-        collected: false,
-        revenue: 450,
-        environmentalCertification: 'ORGANIC-CERT-2024-001',
-        analysisReport: 'High nitrogen content, excellent for crop enhancement',
-        moistureContent: 65.5,
-        npkContent: {
-          nitrogen: 3.2,
-          phosphorus: 1.8,
-          potassium: 2.1
+    const fetchData = async () => {
+      try {
+        const response = await apiService.getSlurryOutputs();
+        if (response.success && response.data) {
+          const slurryData = (Array.isArray(response.data) ? response.data : response.data.content || []).map((slurry: any) => ({
+            ...slurry,
+            id: slurry.id?.toString() || `slurry-${Date.now()}`,
+            outputDate: new Date(slurry.outputDate || slurry.createdAt),
+            collectionScheduled: new Date(slurry.collectionScheduled || Date.now()),
+            qualityGrade: slurry.qualityGrade?.toLowerCase() || 'medium',
+            collected: slurry.collected || false,
+            moistureContent: slurry.moistureContent || 0,
+            npkContent: {
+              nitrogen: slurry.nitrogenContent || 0,
+              phosphorus: slurry.phosphorusContent || 0,
+              potassium: slurry.potassiumContent || 0
+            },
+            revenue: slurry.revenue || 0,
+            analysisReport: slurry.notes || slurry.analysisReport
+          }));
+          setSlurryOutputs(slurryData);
         }
-      },
-      {
-        id: 'slurry-002',
-        cycleId: 'cycle-002',
-        outputDate: new Date(Date.now() - 48 * 60 * 60 * 1000), // 2 days ago
-        volume: 120,
-        qualityGrade: 'medium',
-        destination: 'sale',
-        collectionScheduled: new Date(Date.now() - 12 * 60 * 60 * 1000), // 12 hours ago
-        collected: true,
-        collectedBy: 'FarmCoop Kollective',
-        revenue: 360,
-        environmentalCertification: 'ORGANIC-CERT-2024-002',
-        moistureContent: 68.2,
-        npkContent: {
-          nitrogen: 2.8,
-          phosphorus: 1.5,
-          potassium: 1.9
-        }
-      },
-      {
-        id: 'slurry-003',
-        cycleId: 'cycle-003',
-        outputDate: new Date(Date.now() - 12 * 60 * 60 * 1000), // 12 hours ago
-        volume: 95,
-        qualityGrade: 'low',
-        destination: 'treatment',
-        collectionScheduled: new Date(Date.now() + 48 * 60 * 60 * 1000), // In 2 days
-        collected: false,
-        moistureContent: 72.1,
-        npkContent: {
-          nitrogen: 2.1,
-          phosphorus: 1.2,
-          potassium: 1.4
-        }
-      },
-      {
-        id: 'slurry-004',
-        cycleId: 'cycle-004',
-        outputDate: new Date(Date.now() - 6 * 60 * 60 * 1000), // 6 hours ago
-        volume: 180,
-        qualityGrade: 'high',
-        destination: 'fertilizer',
-        collectionScheduled: new Date(Date.now() + 24 * 60 * 60 * 1000), // Tomorrow
-        collected: false,
-        revenue: 540,
-        environmentalCertification: 'ORGANIC-CERT-2024-003',
-        analysisReport: 'Premium grade slurry, ideal for organic farming',
-        moistureContent: 64.8,
-        npkContent: {
-          nitrogen: 3.5,
-          phosphorus: 2.0,
-          potassium: 2.3
-        }
-      },
-      {
-        id: 'slurry-005',
-        cycleId: 'cycle-005',
-        outputDate: new Date(Date.now() - 3 * 60 * 60 * 1000), // 3 hours ago
-        volume: 85,
-        qualityGrade: 'medium',
-        destination: 'disposal',
-        collectionScheduled: new Date(Date.now() + 72 * 60 * 60 * 1000), // In 3 days
-        collected: false,
-        revenue: -85, // Cost for disposal
-        moistureContent: 75.3,
-        npkContent: {
-          nitrogen: 1.8,
-          phosphorus: 1.0,
-          potassium: 1.1
-        }
+      } catch (error) {
+        console.error('Failed to fetch slurry outputs:', error);
       }
-    ];
+    };
 
-    setSlurryOutputs(mockSlurryOutputs);
+    fetchData();
+    const interval = setInterval(fetchData, 20000); // Refresh every 20 seconds
+    return () => clearInterval(interval);
   }, []);
 
   const getQualityColor = (grade: string) => {
@@ -204,41 +141,63 @@ export const SlurryManagement: React.FC = () => {
     return matchesSearch && matchesDestination;
   });
 
-  const handleCreateSlurry = () => {
-    const price = getDestinationPrice(newSlurryForm.destination);
-    const revenue = newSlurryForm.volume * price;
+  const handleCreateSlurry = async () => {
+    try {
+      // Match backend CreateSlurryOutputRequest DTO structure
+      const slurryData = {
+        cycleId: newSlurryForm.cycleId, // String UUID, not integer
+        slurryType: 'LIQUID', // Backend expects: LIQUID, SOLID, MIXED, SEPARATED
+        volumeLiters: newSlurryForm.volume,
+        weightKg: newSlurryForm.volume * 0.75, // Approximate density calculation
+        qualityGrade: `GRADE_${newSlurryForm.qualityGrade.toUpperCase().charAt(0)}`, // Convert high/medium/low to GRADE_A/GRADE_B/GRADE_C
+        moisturePercent: newSlurryForm.moistureContent,
+        organicMatterPercent: 50, // Not captured in form, use default
+        nitrogenPercent: newSlurryForm.npkContent.nitrogen,
+        phosphorusPercent: newSlurryForm.npkContent.phosphorus,
+        potassiumPercent: newSlurryForm.npkContent.potassium,
+        phLevel: 7.0, // Not captured in form, use neutral default
+        intendedUsage: newSlurryForm.destination.toUpperCase() === 'FERTILIZER' ? 'FERTILIZER' :
+                       newSlurryForm.destination.toUpperCase() === 'DISPOSAL' ? 'WASTE_DISPOSAL' :
+                       newSlurryForm.destination.toUpperCase() === 'TREATMENT' ? 'COMPOST' : 'SOIL_CONDITIONER',
+        storageLocation: 'Primary Storage', // Not captured in form
+        collectedBy: null,
+        notes: `${newSlurryForm.notes || ''}\nCollection scheduled: ${newSlurryForm.collectionScheduled.toISOString()}`
+      };
 
-    const newSlurry: SlurryOutput = {
-      id: `slurry-${Date.now()}`,
-      cycleId: newSlurryForm.cycleId,
-      outputDate: new Date(),
-      volume: newSlurryForm.volume,
-      qualityGrade: newSlurryForm.qualityGrade,
-      destination: newSlurryForm.destination,
-      collectionScheduled: newSlurryForm.collectionScheduled,
-      collected: false,
-      revenue: newSlurryForm.destination === 'disposal' ? -revenue : revenue,
-      moistureContent: newSlurryForm.moistureContent,
-      npkContent: newSlurryForm.npkContent,
-      analysisReport: newSlurryForm.notes
-    };
+      const response = await apiService.createSlurryOutput(slurryData);
+      if (response.success && response.data) {
+        const newSlurry: SlurryOutput = {
+          ...response.data,
+          id: response.data.id?.toString() || `slurry-${Date.now()}`,
+          outputDate: new Date(response.data.outputDate || Date.now()),
+          collectionScheduled: new Date(response.data.collectionScheduled || newSlurryForm.collectionScheduled),
+          qualityGrade: newSlurryForm.qualityGrade,
+          collected: false,
+          revenue: newSlurryForm.destination === 'disposal' ? -revenue : revenue,
+          npkContent: newSlurryForm.npkContent,
+          analysisReport: newSlurryForm.notes
+        };
 
-    setSlurryOutputs(prev => [newSlurry, ...prev]);
+        setSlurryOutputs(prev => [newSlurry, ...prev]);
 
-    // Reset form
-    setNewSlurryForm({
-      cycleId: '',
-      volume: 0,
-      qualityGrade: 'medium',
-      destination: 'fertilizer',
-      collectionScheduled: new Date(Date.now() + 24 * 60 * 60 * 1000),
-      moistureContent: 0,
-      npkContent: {
-        nitrogen: 0,
-        phosphorus: 0,
-        potassium: 0
+        // Reset form
+        setNewSlurryForm({
+          cycleId: '',
+          volume: 0,
+          qualityGrade: 'medium',
+          destination: 'fertilizer',
+          collectionScheduled: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          moistureContent: 0,
+          npkContent: {
+            nitrogen: 0,
+            phosphorus: 0,
+            potassium: 0
+          }
+        });
       }
-    });
+    } catch (error) {
+      console.error('Failed to create slurry output:', error);
+    }
   };
 
   const handleMarkCollected = (slurryId: string, collectedBy: string) => {

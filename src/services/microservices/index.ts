@@ -19,7 +19,7 @@ export interface ServiceConfig {
 export const SERVICE_REGISTRY: Record<string, ServiceConfig> = {
   'auth-service': {
     name: 'Authentication Service',
-    baseUrl: 'http://localhost:8081',
+    baseUrl: 'http://localhost:8081/auth-service',
     port: 8081,
     endpoints: [
       '/auth/api/v1/login',
@@ -88,6 +88,20 @@ export const SERVICE_REGISTRY: Record<string, ServiceConfig> = {
     port: 8085,
     endpoints: ['/government/api/v1/dashboard', '/government/api/v1/schemes', '/government/api/v1/compliance'],
     status: 'active'
+  },
+  'purification-service': {
+    name: 'Biogas Purification Service',
+    baseUrl: 'http://localhost:8087',
+    port: 8087,
+    endpoints: [
+      '/purification-service/api/v1/cycles',
+      '/purification-service/api/v1/metrics/realtime',
+      '/purification-service/api/v1/quality/tests',
+      '/purification-service/api/v1/inventory',
+      '/purification-service/api/v1/slurry',
+      '/purification-service/api/v1/maintenance'
+    ],
+    status: 'active'
   }
 };
 
@@ -108,12 +122,23 @@ export class MicroservicesClient {
    * Handle 401 Unauthorized errors - clear tokens and redirect to login
    */
   private handle401Error(): void {
+    console.error('🚨 [handle401Error] CALLED! Stack trace:');
+    console.trace();
+    console.error('🚨 [handle401Error] Current location:', window.location.href);
+    console.error('🚨 [handle401Error] localStorage before clear:', {
+      user: localStorage.getItem('user') ? 'EXISTS' : 'NULL',
+      token: localStorage.getItem('saubhagya_jwt_token') ? 'EXISTS' : 'NULL',
+      sessionStart: localStorage.getItem('sessionStart') ? 'EXISTS' : 'NULL'
+    });
+
     // Clear all tokens from localStorage
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('saubhagya_jwt_token');
     localStorage.removeItem('user');
     localStorage.removeItem('sessionStart');
+
+    console.error('🚨 [handle401Error] localStorage CLEARED');
 
     // Get current path for redirect after re-login
     const currentPath = window.location.pathname + window.location.search;
@@ -124,6 +149,8 @@ export class MicroservicesClient {
       toast.error('Session expired. Please login again.');
     });
 
+    console.error('🚨 [handle401Error] Redirecting to:', `/login${redirectParam}`);
+
     // Redirect to login page with redirect parameter
     window.location.href = `/login${redirectParam}`;
   }
@@ -132,6 +159,13 @@ export class MicroservicesClient {
    * Make API call to specific microservice
    */
   async callService(serviceName: string, endpoint: string, options: RequestInit = {}): Promise<Response> {
+    console.log('📡 [callService] API Call:', {
+      service: serviceName,
+      endpoint,
+      method: options.method || 'GET',
+      url: `${this.getService(serviceName)?.baseUrl}${endpoint}`
+    });
+
     const service = this.getService(serviceName);
 
     if (!service) {
@@ -146,19 +180,29 @@ export class MicroservicesClient {
 
     // Add simple headers that work with CORS
     const token = localStorage.getItem('saubhagya_jwt_token');
+    console.log('📡 [callService] Token check:', token ? 'EXISTS' : 'NULL');
+
     const headers = {
       'Content-Type': 'application/json',
       ...(token && { Authorization: `Bearer ${token}` }),
       ...options.headers
     };
 
+    console.log('📡 [callService] Making fetch request to:', url);
     const response = await fetch(url, {
       ...options,
       headers
     });
 
+    console.log('📡 [callService] Response:', {
+      status: response.status,
+      statusText: response.statusText,
+      ok: response.ok
+    });
+
     // Handle 401 Unauthorized errors
     if (response.status === 401) {
+      console.error('📡 [callService] Got 401 Unauthorized, calling handle401Error()');
       this.handle401Error();
       throw new Error('Unauthorized - Session expired');
     }

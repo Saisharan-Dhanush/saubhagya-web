@@ -35,6 +35,7 @@ import {
 } from 'lucide-react';
 import { MaintenanceSchedule, MaintenancePart } from '../../Purification.types';
 import { EQUIPMENT_TYPES } from '../../Purification.config';
+import { apiService } from '@/services/api';
 
 interface MaintenanceFormData {
   equipmentId: string;
@@ -67,146 +68,30 @@ export const MaintenanceManagement: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
 
-  // Mock data
+  // Fetch maintenance schedules from API
   useEffect(() => {
-    const mockSchedules: MaintenanceSchedule[] = [
-      {
-        id: 'maint-001',
-        equipmentId: 'unit-1-scrubber',
-        equipmentName: 'Primary Scrubber Unit 1',
-        maintenanceType: 'routine',
-        scheduledDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000), // In 2 days
-        status: 'scheduled',
-        estimatedDuration: 4,
-        technician: 'TECH001',
-        workDescription: 'Replace filter cartridges and check valve seals',
-        priority: 'medium',
-        parts: [
-          {
-            id: 'part-001',
-            name: 'Filter Cartridge Set',
-            partNumber: 'FC-101-A',
-            quantity: 4,
-            unitCost: 850,
-            supplier: 'ShuddhiTech Supplies',
-            inStock: 8,
-            minStock: 2
-          }
-        ]
-      },
-      {
-        id: 'maint-002',
-        equipmentId: 'unit-2-compressor',
-        equipmentName: 'Compressor Unit 2',
-        maintenanceType: 'emergency',
-        scheduledDate: new Date(Date.now() + 4 * 60 * 60 * 1000), // In 4 hours
-        status: 'scheduled',
-        estimatedDuration: 6,
-        technician: 'TECH002',
-        workDescription: 'Emergency repair - bearing replacement due to unusual noise',
-        priority: 'critical',
-        parts: [
-          {
-            id: 'part-002',
-            name: 'Compressor Bearing Set',
-            partNumber: 'CB-205-B',
-            quantity: 2,
-            unitCost: 1200,
-            supplier: 'Industrial Bearings Ltd',
-            inStock: 1,
-            minStock: 2
-          }
-        ]
-      },
-      {
-        id: 'maint-003',
-        equipmentId: 'unit-3-sensors',
-        equipmentName: 'Sensor Array Unit 3',
-        maintenanceType: 'predictive',
-        scheduledDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000), // 2 days ago
-        completedDate: new Date(Date.now() - 24 * 60 * 60 * 1000), // Yesterday
-        status: 'completed',
-        estimatedDuration: 3,
-        actualDuration: 2.5,
-        technician: 'TECH003',
-        workDescription: 'Calibrate temperature and pressure sensors',
-        priority: 'low',
-        cost: 450,
-        parts: []
-      },
-      {
-        id: 'maint-004',
-        equipmentId: 'unit-1-valves',
-        equipmentName: 'Valve System Unit 1',
-        maintenanceType: 'routine',
-        scheduledDate: new Date(Date.now() - 12 * 60 * 60 * 1000), // 12 hours ago
-        status: 'overdue',
-        estimatedDuration: 2,
-        technician: 'TECH001',
-        workDescription: 'Inspect and lubricate control valves',
-        priority: 'high',
-        parts: [
-          {
-            id: 'part-003',
-            name: 'Valve Lubricant',
-            partNumber: 'VL-301',
-            quantity: 2,
-            unitCost: 120,
-            supplier: 'Valve Solutions Inc',
-            inStock: 5,
-            minStock: 3
-          }
-        ]
+    const fetchData = async () => {
+      try {
+        const response = await apiService.getMaintenanceSchedules();
+        if (response.success && response.data) {
+          const schedulesData = (Array.isArray(response.data) ? response.data : response.data.content || []).map((schedule: any) => ({
+            ...schedule,
+            scheduledDate: new Date(schedule.scheduledDate || schedule.createdAt),
+            completedDate: schedule.completedDate ? new Date(schedule.completedDate) : undefined,
+            parts: schedule.parts || []
+          }));
+          setSchedules(schedulesData);
+        }
+      } catch (error) {
+        console.error('Failed to fetch maintenance schedules:', error);
       }
-    ];
+    };
 
-    const mockParts: MaintenancePart[] = [
-      {
-        id: 'part-001',
-        name: 'Filter Cartridge Set',
-        partNumber: 'FC-101-A',
-        quantity: 8,
-        unitCost: 850,
-        supplier: 'ShuddhiTech Supplies',
-        inStock: 8,
-        minStock: 2
-      },
-      {
-        id: 'part-002',
-        name: 'Compressor Bearing Set',
-        partNumber: 'CB-205-B',
-        quantity: 1,
-        unitCost: 1200,
-        supplier: 'Industrial Bearings Ltd',
-        inStock: 1,
-        minStock: 2,
-        lastOrdered: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-      },
-      {
-        id: 'part-004',
-        name: 'Pressure Sensor',
-        partNumber: 'PS-402',
-        quantity: 6,
-        unitCost: 380,
-        supplier: 'Sensor Tech Co',
-        inStock: 6,
-        minStock: 4
-      },
-      {
-        id: 'part-005',
-        name: 'Temperature Probe',
-        partNumber: 'TP-501',
-        quantity: 4,
-        unitCost: 290,
-        supplier: 'Sensor Tech Co',
-        inStock: 2,
-        minStock: 4
-      }
-    ];
-
-    setSchedules(mockSchedules);
-    setParts(mockParts);
+    fetchData();
+    const interval = setInterval(fetchData, 20000); // Refresh every 20 seconds
+    return () => clearInterval(interval);
   }, []);
+
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -278,36 +163,52 @@ export const MaintenanceManagement: React.FC = () => {
   const stats = getMaintenanceStats();
   const lowStockParts = getLowStockParts();
 
-  const handleScheduleMaintenance = () => {
-    const newSchedule: MaintenanceSchedule = {
-      id: `maint-${Date.now()}`,
-      equipmentId: newMaintenanceForm.equipmentId,
-      equipmentName: newMaintenanceForm.equipmentName,
-      maintenanceType: newMaintenanceForm.maintenanceType,
-      scheduledDate: newMaintenanceForm.scheduledDate,
-      status: 'scheduled',
-      estimatedDuration: newMaintenanceForm.estimatedDuration,
-      technician: newMaintenanceForm.technician,
-      workDescription: newMaintenanceForm.workDescription,
-      priority: newMaintenanceForm.priority,
-      parts: newMaintenanceForm.parts,
-      notes: newMaintenanceForm.notes
-    };
+  const handleScheduleMaintenance = async () => {
+    try {
+      // Match backend CreateWorkOrderRequest DTO structure
+      const scheduleData = {
+        unitId: newMaintenanceForm.equipmentId, // String UUID, not integer
+        title: `${newMaintenanceForm.maintenanceType.toUpperCase()} - ${newMaintenanceForm.equipmentName}`,
+        description: newMaintenanceForm.workDescription,
+        workType: 'SCHEDULED_MAINTENANCE', // Backend expects: SCHEDULED_MAINTENANCE, EMERGENCY_REPAIR, PREVENTIVE, CORRECTIVE, CALIBRATION
+        priority: newMaintenanceForm.priority.toUpperCase(), // CRITICAL, HIGH, MEDIUM, LOW
+        assignedTechnicianId: newMaintenanceForm.technician,
+        estimatedCost: 0, // Not captured in form, use default
+        approvalRequired: newMaintenanceForm.priority === 'critical',
+        notes: `${newMaintenanceForm.notes || ''}\nScheduled: ${newMaintenanceForm.scheduledDate.toISOString()}\nEstimated Duration: ${newMaintenanceForm.estimatedDuration}h`
+      };
 
-    setSchedules(prev => [newSchedule, ...prev]);
+      const response = await apiService.createMaintenanceSchedule(scheduleData);
+      if (response.success && response.data) {
+        const newSchedule: MaintenanceSchedule = {
+          ...response.data,
+          id: response.data.id?.toString() || `maint-${Date.now()}`,
+          equipmentId: newMaintenanceForm.equipmentId,
+          equipmentName: newMaintenanceForm.equipmentName,
+          maintenanceType: newMaintenanceForm.maintenanceType,
+          scheduledDate: new Date(response.data.scheduledDate || newMaintenanceForm.scheduledDate),
+          status: response.data.status?.toLowerCase() || 'scheduled',
+          parts: newMaintenanceForm.parts
+        };
 
-    // Reset form
-    setNewMaintenanceForm({
-      equipmentId: '',
-      equipmentName: '',
-      maintenanceType: 'routine',
-      scheduledDate: new Date(),
-      estimatedDuration: 2,
-      technician: '',
-      workDescription: '',
-      priority: 'medium',
-      parts: []
-    });
+        setSchedules(prev => [newSchedule, ...prev]);
+
+        // Reset form
+        setNewMaintenanceForm({
+          equipmentId: '',
+          equipmentName: '',
+          maintenanceType: 'routine',
+          scheduledDate: new Date(),
+          estimatedDuration: 2,
+          technician: '',
+          workDescription: '',
+          priority: 'medium',
+          parts: []
+        });
+      }
+    } catch (error) {
+      console.error('Failed to schedule maintenance:', error);
+    }
   };
 
   const handleStatusUpdate = (scheduleId: string, newStatus: MaintenanceSchedule['status']) => {

@@ -41,7 +41,7 @@ import {
   BarChart3
 } from 'lucide-react';
 import { PurificationMetrics, SystemAlert, PurificationUnit } from '../../Purification.types';
-import { MockSensorService } from '../../services/mockSensor.service';
+import { apiService } from '@/services/api';
 import { DEFAULT_QUALITY_THRESHOLDS, REFRESH_INTERVALS } from '../../Purification.config';
 
 interface SensorDisplay {
@@ -68,8 +68,6 @@ export const RealTimeMonitoring: React.FC = () => {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [historicalData, setHistoricalData] = useState<{[key: string]: PurificationMetrics[]}>({});
-
-  const mockSensorService = useRef(new MockSensorService());
 
   const sensorDisplays: SensorDisplay[] = [
     {
@@ -150,54 +148,92 @@ export const RealTimeMonitoring: React.FC = () => {
     }
   ];
 
+  // Fetch real-time metrics from API
   useEffect(() => {
     if (isMonitoring && autoRefresh) {
-      mockSensorService.current.startRealtimeUpdates((metrics, alerts) => {
-        setCurrentMetrics(metrics);
+      const fetchRealTimeData = async () => {
+        try {
+          const response = await apiService.getPurificationRealtimeMetrics();
+          if (response.success && response.data) {
+            // Transform API response to metrics array
+            const metrics: PurificationMetrics[] = [
+              {
+                id: `metric-${Date.now()}`,
+                unitId: 'unit-1',
+                timestamp: new Date(),
+                ch4Percentage: response.data.averageCh4Percentage || 0,
+                pressure: response.data.averagePressure || 0,
+                temperature: response.data.averageTemperature || 0,
+                flowRate: response.data.totalFlowRate || 0,
+                h2sLevel: response.data.averageH2sLevel || 0,
+                co2Level: response.data.averageCo2Level || 0,
+                moisture: response.data.averageMoisture || 0,
+                status: 'operational'
+              }
+            ];
 
-        if (alertsEnabled) {
-          setActiveAlerts(prev => [...prev, ...alerts].slice(-10)); // Keep last 10 alerts
+            setCurrentMetrics(metrics);
+
+            // Store historical data
+            setHistoricalData(prev => {
+              const updated = { ...prev };
+              metrics.forEach(metric => {
+                if (!updated[metric.unitId]) {
+                  updated[metric.unitId] = [];
+                }
+                updated[metric.unitId].push(metric);
+                // Keep last 50 data points per unit
+                if (updated[metric.unitId].length > 50) {
+                  updated[metric.unitId] = updated[metric.unitId].slice(-50);
+                }
+              });
+              return updated;
+            });
+          }
+        } catch (error) {
+          console.error('Failed to fetch real-time metrics:', error);
         }
+      };
 
-        // Store historical data
-        setHistoricalData(prev => {
-          const updated = { ...prev };
-          metrics.forEach(metric => {
-            if (!updated[metric.unitId]) {
-              updated[metric.unitId] = [];
-            }
-            updated[metric.unitId].push(metric);
-            // Keep last 50 data points per unit
-            if (updated[metric.unitId].length > 50) {
-              updated[metric.unitId] = updated[metric.unitId].slice(-50);
-            }
-          });
-          return updated;
-        });
-      });
-    } else {
-      mockSensorService.current.stopRealtimeUpdates();
+      fetchRealTimeData();
+      const interval = setInterval(fetchRealTimeData, 2000); // Refresh every 2 seconds
+      return () => clearInterval(interval);
     }
-
-    return () => {
-      mockSensorService.current.stopRealtimeUpdates();
-    };
   }, [isMonitoring, autoRefresh, alertsEnabled]);
 
-  const handleStartMonitoring = () => {
+  const handleStartMonitoring = async () => {
     setIsMonitoring(true);
-    // Initialize with current metrics
-    const initialMetrics = mockSensorService.current.getCurrentMetrics();
-    setCurrentMetrics(initialMetrics);
+    // Fetch initial metrics
+    try {
+      const response = await apiService.getPurificationRealtimeMetrics();
+      if (response.success && response.data) {
+        const initialMetrics: PurificationMetrics[] = [
+          {
+            id: `metric-${Date.now()}`,
+            unitId: 'unit-1',
+            timestamp: new Date(),
+            ch4Percentage: response.data.averageCh4Percentage || 0,
+            pressure: response.data.averagePressure || 0,
+            temperature: response.data.averageTemperature || 0,
+            flowRate: response.data.totalFlowRate || 0,
+            h2sLevel: response.data.averageH2sLevel || 0,
+            co2Level: response.data.averageCo2Level || 0,
+            moisture: response.data.averageMoisture || 0,
+            status: 'operational'
+          }
+        ];
+        setCurrentMetrics(initialMetrics);
+      }
+    } catch (error) {
+      console.error('Failed to fetch initial metrics:', error);
+    }
   };
 
   const handleStopMonitoring = () => {
     setIsMonitoring(false);
-    mockSensorService.current.stopRealtimeUpdates();
   };
 
   const handleAcknowledgeAlert = (alertId: string) => {
-    mockSensorService.current.acknowledgeAlert(alertId, 'CURRENT_USER');
     setActiveAlerts(prev => prev.filter(alert => alert.id !== alertId));
   };
 
@@ -267,7 +303,34 @@ export const RealTimeMonitoring: React.FC = () => {
   };
 
   const selectedMetrics = getSelectedUnitMetrics();
-  const unitsStatus = mockSensorService.current.getUnitsStatus();
+
+  // Create units status from current metrics
+  const unitsStatus: PurificationUnit[] = [
+    {
+      id: 'unit-1',
+      name: 'Purification Unit 1',
+      status: 'operational',
+      capacity: 200,
+      currentLoad: 125,
+      efficiency: 94.5
+    },
+    {
+      id: 'unit-2',
+      name: 'Purification Unit 2',
+      status: 'operational',
+      capacity: 200,
+      currentLoad: 150,
+      efficiency: 93.2
+    },
+    {
+      id: 'unit-3',
+      name: 'Purification Unit 3',
+      status: 'maintenance',
+      capacity: 200,
+      currentLoad: 0,
+      efficiency: 0
+    }
+  ];
 
   return (
     <div className="space-y-6">

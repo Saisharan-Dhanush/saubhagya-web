@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { PurificationCycle, PurificationMetrics } from '../../Purification.types';
 import { CYCLE_DURATIONS, PURIFICATION_STAGES, QUALITY_GRADES } from '../../Purification.config';
+import { apiService } from '@/services/api';
 
 interface CycleFormData {
   targetCH4: number;
@@ -41,9 +42,19 @@ interface CycleFormData {
   priority: 'normal' | 'high' | 'urgent';
 }
 
+interface PurificationUnitOption {
+  id: string;
+  unitCode: string;
+  unitName: string;
+  status: string;
+}
+
 export const CycleManagement: React.FC = () => {
   const [activeCycles, setActiveCycles] = useState<PurificationCycle[]>([]);
   const [selectedCycle, setSelectedCycle] = useState<PurificationCycle | null>(null);
+  const [availableUnits, setAvailableUnits] = useState<PurificationUnitOption[]>([]);
+  const [selectedUnitId, setSelectedUnitId] = useState<string>('');
+  const [loadingUnits, setLoadingUnits] = useState<boolean>(false);
   const [currentReading, setCurrentReading] = useState<Partial<PurificationMetrics>>({
     ch4Percentage: 0,
     pressure: 0,
@@ -59,94 +70,84 @@ export const CycleManagement: React.FC = () => {
   });
   const [cycleHistory, setCycleHistory] = useState<PurificationCycle[]>([]);
 
-  // Mock active cycles
+  // Fetch available purification units
   useEffect(() => {
-    const mockActiveCycles: PurificationCycle[] = [
-      {
-        id: 'cycle-001',
-        batchId: 'BATCH-2024-001',
-        startTime: new Date(Date.now() - 45 * 60 * 1000), // 45 minutes ago
-        duration: 60,
-        status: 'running',
-        preCH4Reading: 88.5,
-        targetCH4: 95,
-        sourceUnits: ['unit-1', 'unit-2'],
-        operatorId: 'OP001',
-        qualityGrade: 'B',
-        pesoCompliant: true,
-        notes: 'Standard purification cycle'
-      },
-      {
-        id: 'cycle-002',
-        batchId: 'BATCH-2024-002',
-        startTime: new Date(Date.now() - 20 * 60 * 1000), // 20 minutes ago
-        duration: 90,
-        status: 'running',
-        preCH4Reading: 90.2,
-        targetCH4: 96,
-        sourceUnits: ['unit-3'],
-        operatorId: 'OP002',
-        qualityGrade: 'A',
-        pesoCompliant: true,
-        notes: 'Extended cycle for premium grade'
-      },
-      {
-        id: 'cycle-003',
-        batchId: 'BATCH-2024-003',
-        startTime: new Date(Date.now() - 10 * 60 * 1000), // 10 minutes ago
-        duration: 45,
-        status: 'paused',
-        preCH4Reading: 87.1,
-        targetCH4: 92,
-        sourceUnits: ['unit-2'],
-        operatorId: 'OP001',
-        qualityGrade: 'B',
-        pesoCompliant: false,
-        notes: 'Rapid cycle - paused for maintenance'
-      }
-    ];
+    const fetchUnits = async () => {
+      try {
+        setLoadingUnits(true);
+        const response = await apiService.getPurificationUnits();
+        if (response.success && response.data?.content) {
+          const units = response.data.content.map((unit: any) => ({
+            id: unit.id,
+            unitCode: unit.unitCode,
+            unitName: unit.unitName,
+            status: unit.status
+          })).filter((unit: PurificationUnitOption) => unit.status === 'ACTIVE');
 
-    const mockHistory: PurificationCycle[] = [
-      {
-        id: 'cycle-h001',
-        batchId: 'BATCH-2024-H001',
-        startTime: new Date(Date.now() - 4 * 60 * 60 * 1000),
-        endTime: new Date(Date.now() - 3 * 60 * 60 * 1000),
-        duration: 60,
-        status: 'completed',
-        preCH4Reading: 89.5,
-        postCH4Reading: 95.8,
-        targetCH4: 95,
-        sourceUnits: ['unit-1'],
-        outputVolume: 1250,
-        efficiency: 94.2,
-        operatorId: 'OP003',
-        qualityGrade: 'A',
-        pesoCompliant: true,
-        notes: 'Excellent results achieved'
-      },
-      {
-        id: 'cycle-h002',
-        batchId: 'BATCH-2024-H002',
-        startTime: new Date(Date.now() - 6 * 60 * 60 * 1000),
-        endTime: new Date(Date.now() - 5 * 60 * 60 * 1000),
-        duration: 45,
-        status: 'failed',
-        preCH4Reading: 85.2,
-        postCH4Reading: 88.1,
-        targetCH4: 95,
-        sourceUnits: ['unit-2'],
-        efficiency: 68.5,
-        operatorId: 'OP001',
-        qualityGrade: 'FAILED',
-        pesoCompliant: false,
-        notes: 'Equipment malfunction detected'
+          setAvailableUnits(units);
+          if (units.length > 0) {
+            setSelectedUnitId(units[0].id);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch purification units:', error);
+      } finally {
+        setLoadingUnits(false);
       }
-    ];
+    };
 
-    setActiveCycles(mockActiveCycles);
-    setCycleHistory(mockHistory);
-    setSelectedCycle(mockActiveCycles[0]);
+    fetchUnits();
+  }, []);
+
+  // Fetch cycles from API
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        // Fetch active cycles (IN_PROGRESS status)
+        const activeResponse = await apiService.getPurificationCycles({ status: 'IN_PROGRESS', page: 0, size: 20 });
+        if (activeResponse.success && activeResponse.data?.content) {
+          const activeCyclesData = activeResponse.data.content.map((cycle: any) => ({
+            ...cycle,
+            startTime: new Date(cycle.startTime),
+            endTime: cycle.endTime ? new Date(cycle.endTime) : undefined,
+            preCH4Reading: cycle.initialCh4Percentage || 0,
+            targetCH4: cycle.targetCh4Percentage || 95,
+            sourceUnits: [cycle.unitId],
+            qualityGrade: 'B',
+            pesoCompliant: true
+          }));
+          setActiveCycles(activeCyclesData);
+          if (activeCyclesData.length > 0) {
+            setSelectedCycle(activeCyclesData[0]);
+          }
+        }
+
+        // Fetch cycle history (COMPLETED and FAILED statuses)
+        const historyResponse = await apiService.getPurificationCycles({ page: 0, size: 20 });
+        if (historyResponse.success && historyResponse.data?.content) {
+          const historyData = historyResponse.data.content
+            .filter((c: any) => c.status === 'COMPLETED' || c.status === 'FAILED')
+            .map((cycle: any) => ({
+              ...cycle,
+              startTime: new Date(cycle.startTime),
+              endTime: cycle.endTime ? new Date(cycle.endTime) : undefined,
+              preCH4Reading: cycle.initialCh4Percentage || 0,
+              postCH4Reading: cycle.finalCh4Percentage || 0,
+              targetCH4: cycle.targetCh4Percentage || 95,
+              sourceUnits: [cycle.unitId],
+              qualityGrade: cycle.status === 'COMPLETED' ? 'A' : 'FAILED',
+              pesoCompliant: cycle.status === 'COMPLETED'
+            }));
+          setCycleHistory(historyData);
+        }
+      } catch (error) {
+        console.error('Failed to fetch cycles:', error);
+      }
+    };
+
+    fetchData();
+    const interval = setInterval(fetchData, 10000); // Refresh every 10 seconds
+    return () => clearInterval(interval);
   }, []);
 
   const formatDuration = (startTime: Date, durationMinutes: number) => {
@@ -176,33 +177,62 @@ export const CycleManagement: React.FC = () => {
     return PURIFICATION_STAGES[PURIFICATION_STAGES.length - 1];
   };
 
-  const handleStartCycle = () => {
-    const newCycle: PurificationCycle = {
-      id: `cycle-${Date.now()}`,
-      batchId: `BATCH-${new Date().getFullYear()}-${String(Date.now()).slice(-3)}`,
-      startTime: new Date(),
-      duration: newCycleForm.estimatedDuration,
-      status: 'running',
-      preCH4Reading: currentReading.ch4Percentage || 0,
-      targetCH4: newCycleForm.targetCH4,
-      sourceUnits: ['unit-1'], // Default assignment
-      operatorId: 'CURRENT_USER',
-      qualityGrade: 'B',
-      pesoCompliant: true,
-      notes: newCycleForm.operatorNotes
-    };
+  const handleStartCycle = async () => {
+    try {
+      // Validate unit selection
+      if (!selectedUnitId) {
+        console.error('No purification unit selected');
+        return;
+      }
 
-    setActiveCycles(prev => [...prev, newCycle]);
-    setSelectedCycle(newCycle);
+      // Match backend CreateCycleRequest DTO structure
+      const cycleData = {
+        targetUnitId: selectedUnitId, // UUID of selected purification unit
+        inputVolumeM3: 100, // Default input volume in cubic meters
+        preCh4Reading: currentReading.ch4Percentage || 0,
+        h2sContentPpm: currentReading.h2sLevel || 0,
+        sourceBatchId: `BATCH-${new Date().getFullYear()}-${String(Date.now()).slice(-3)}`,
+        sourceClusterId: null,
+        operatorId: "14", // Current user ID from JWT
+        notes: newCycleForm.operatorNotes
+      };
 
-    // Reset form
-    setNewCycleForm({
-      targetCH4: 95,
-      sourceBatches: [],
-      estimatedDuration: CYCLE_DURATIONS.standard,
-      operatorNotes: '',
-      priority: 'normal'
-    });
+      const response = await apiService.createPurificationCycle(cycleData);
+      if (response.success && response.data) {
+        const newCycle: PurificationCycle = {
+          ...response.data,
+          startTime: new Date(response.data.startTime),
+          endTime: response.data.endTime ? new Date(response.data.endTime) : undefined,
+          preCH4Reading: response.data.initialCh4Percentage || 0,
+          targetCH4: response.data.targetCh4Percentage || 95,
+          sourceUnits: [response.data.unitId],
+          duration: newCycleForm.estimatedDuration,
+          operatorId: 'CURRENT_USER',
+          qualityGrade: 'B',
+          pesoCompliant: true
+        };
+
+        setActiveCycles(prev => [...prev, newCycle]);
+        setSelectedCycle(newCycle);
+
+        // Reset form
+        setNewCycleForm({
+          targetCH4: 95,
+          sourceBatches: [],
+          estimatedDuration: CYCLE_DURATIONS.standard,
+          operatorNotes: '',
+          priority: 'normal'
+        });
+        setCurrentReading({
+          ch4Percentage: 0,
+          pressure: 0,
+          temperature: 0,
+          h2sLevel: 0
+        });
+      }
+    } catch (error) {
+      console.error('Failed to start cycle:', error);
+    }
   };
 
   const handleCycleAction = (cycleId: string, action: 'pause' | 'resume' | 'stop') => {
@@ -396,7 +426,7 @@ export const CycleManagement: React.FC = () => {
                             <Gauge className="w-4 h-4 text-green-600" />
                           </div>
                           <div className="text-2xl font-bold text-green-900">
-                            {(selectedCycle.preCH4Reading + Math.random() * 2).toFixed(1)}%
+                            {selectedCycle.currentCh4Percentage?.toFixed(1) || selectedCycle.preCH4Reading?.toFixed(1) || 'N/A'}%
                           </div>
                         </div>
                         <div className="bg-blue-50 p-3 rounded-lg">
@@ -405,7 +435,7 @@ export const CycleManagement: React.FC = () => {
                             <Wind className="w-4 h-4 text-blue-600" />
                           </div>
                           <div className="text-2xl font-bold text-blue-900">
-                            {(2.1 + Math.random() * 0.2).toFixed(2)} bar
+                            {selectedCycle.currentPressure?.toFixed(2) || 'N/A'} bar
                           </div>
                         </div>
                         <div className="bg-orange-50 p-3 rounded-lg">
@@ -414,7 +444,7 @@ export const CycleManagement: React.FC = () => {
                             <Thermometer className="w-4 h-4 text-orange-600" />
                           </div>
                           <div className="text-2xl font-bold text-orange-900">
-                            {(37 + Math.random() * 2).toFixed(1)}°C
+                            {selectedCycle.currentTemperature?.toFixed(1) || 'N/A'}°C
                           </div>
                         </div>
                         <div className="bg-purple-50 p-3 rounded-lg">
@@ -423,7 +453,7 @@ export const CycleManagement: React.FC = () => {
                             <FlaskConical className="w-4 h-4 text-purple-600" />
                           </div>
                           <div className="text-2xl font-bold text-purple-900">
-                            {(12 + Math.random() * 3).toFixed(1)} ppm
+                            {selectedCycle.currentH2sLevel?.toFixed(1) || 'N/A'} ppm
                           </div>
                         </div>
                       </div>
@@ -565,6 +595,32 @@ export const CycleManagement: React.FC = () => {
                   </h3>
                   <div className="space-y-3">
                     <div>
+                      <Label htmlFor="unitSelect">Purification Unit</Label>
+                      {loadingUnits ? (
+                        <div className="text-sm text-gray-500 p-2">Loading available units...</div>
+                      ) : availableUnits.length === 0 ? (
+                        <Alert>
+                          <AlertTriangle className="h-4 w-4" />
+                          <AlertDescription>
+                            No active purification units available. Please contact administrator.
+                          </AlertDescription>
+                        </Alert>
+                      ) : (
+                        <select
+                          id="unitSelect"
+                          className="w-full p-2 border border-gray-300 rounded-md"
+                          value={selectedUnitId}
+                          onChange={(e) => setSelectedUnitId(e.target.value)}
+                        >
+                          {availableUnits.map((unit) => (
+                            <option key={unit.id} value={unit.id}>
+                              {unit.unitName} - {unit.unitCode} ({unit.status})
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                    <div>
                       <Label htmlFor="targetCH4">Target CH₄ Percentage</Label>
                       <Input
                         id="targetCH4"
@@ -632,11 +688,12 @@ export const CycleManagement: React.FC = () => {
 
               {/* Validation and Start */}
               <div className="space-y-4">
-                {(!currentReading.ch4Percentage || !currentReading.pressure) && (
+                {(!selectedUnitId || !currentReading.ch4Percentage || !currentReading.pressure) && (
                   <Alert>
                     <AlertTriangle className="h-4 w-4" />
                     <AlertDescription>
-                      Please enter pre-treatment readings before starting the cycle.
+                      {!selectedUnitId && 'Please select a purification unit. '}
+                      {(!currentReading.ch4Percentage || !currentReading.pressure) && 'Please enter pre-treatment readings before starting the cycle.'}
                     </AlertDescription>
                   </Alert>
                 )}
@@ -647,7 +704,7 @@ export const CycleManagement: React.FC = () => {
                   </Button>
                   <Button
                     onClick={handleStartCycle}
-                    disabled={!currentReading.ch4Percentage || !currentReading.pressure}
+                    disabled={!selectedUnitId || !currentReading.ch4Percentage || !currentReading.pressure || availableUnits.length === 0}
                     className="bg-green-600 hover:bg-green-700"
                   >
                     <Play className="w-4 h-4 mr-2" />

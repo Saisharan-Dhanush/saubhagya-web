@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { QualityTest, PurificationCycle } from '../../Purification.types';
 import { QUALITY_GRADES, PESO_COMPLIANCE_LEVELS, DEFAULT_QUALITY_THRESHOLDS } from '../../Purification.config';
+import { apiService } from '@/services/api';
 
 interface QualityFormData {
   batchId: string;
@@ -70,110 +71,38 @@ export const QualityControl: React.FC = () => {
   });
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Mock data
+  // Fetch quality tests from API
   useEffect(() => {
-    const mockTests: QualityTest[] = [
-      {
-        id: 'test-001',
-        batchId: 'BATCH-2024-001',
-        cycleId: 'cycle-001',
-        testDate: new Date(),
-        testType: 'final_quality',
-        parameters: {
-          ch4: 95.8,
-          co2: 2.1,
-          h2s: 8.5,
-          moisture: 0.3,
-          calificValue: 9850,
-          density: 0.72
-        },
-        complianceStatus: 'pass',
-        pesoRating: 'A+',
-        technician: 'LAB001',
-        certificationNumber: 'PESO-2024-A+001',
-        labResults: 'All parameters within acceptable range. Premium grade quality achieved.'
-      },
-      {
-        id: 'test-002',
-        batchId: 'BATCH-2024-002',
-        cycleId: 'cycle-002',
-        testDate: new Date(Date.now() - 24 * 60 * 60 * 1000),
-        testType: 'final_quality',
-        parameters: {
-          ch4: 92.5,
-          co2: 3.2,
-          h2s: 15.2,
-          moisture: 0.6,
-          calificValue: 9250,
-          density: 0.74
-        },
-        complianceStatus: 'pass',
-        pesoRating: 'B+',
-        technician: 'LAB002',
-        certificationNumber: 'PESO-2024-B+002'
-      },
-      {
-        id: 'test-003',
-        batchId: 'BATCH-2024-003',
-        cycleId: 'cycle-003',
-        testDate: new Date(Date.now() - 48 * 60 * 60 * 1000),
-        testType: 'final_quality',
-        parameters: {
-          ch4: 88.2,
-          co2: 6.1,
-          h2s: 25.8,
-          moisture: 1.2,
-          calificValue: 8820,
-          density: 0.78
-        },
-        complianceStatus: 'fail',
-        pesoRating: 'Failed',
-        technician: 'LAB001',
-        labResults: 'CH4 content below minimum threshold. H2S levels exceed acceptable limits.'
-      }
-    ];
+    const fetchData = async () => {
+      try {
+        const response = await apiService.getQualityTests({ page: 0, size: 50 });
+        if (response.success && response.data?.content) {
+          const tests = response.data.content.map((test: any) => ({
+            ...test,
+            testDate: new Date(test.testDate || test.createdAt),
+            parameters: {
+              ch4: test.ch4Percentage || 0,
+              co2: test.co2Percentage || 0,
+              h2s: test.h2sLevel || 0,
+              moisture: test.moistureContent || 0,
+              calificValue: test.calorificValue || 0,
+              density: test.density || 0
+            },
+            complianceStatus: test.passed ? 'pass' : (test.passed === false ? 'fail' : 'pending'),
+            pesoRating: test.pesoGrade || 'Pending'
+          }));
 
-    const mockPending: QualityTest[] = [
-      {
-        id: 'test-pending-001',
-        batchId: 'BATCH-2024-004',
-        cycleId: 'cycle-004',
-        testDate: new Date(),
-        testType: 'final_quality',
-        parameters: {
-          ch4: 0,
-          co2: 0,
-          h2s: 0,
-          moisture: 0,
-          calificValue: 0,
-          density: 0
-        },
-        complianceStatus: 'pending',
-        pesoRating: 'Pending',
-        technician: 'LAB001'
-      },
-      {
-        id: 'test-pending-002',
-        batchId: 'BATCH-2024-005',
-        cycleId: 'cycle-005',
-        testDate: new Date(),
-        testType: 'post_treatment',
-        parameters: {
-          ch4: 0,
-          co2: 0,
-          h2s: 0,
-          moisture: 0,
-          calificValue: 0,
-          density: 0
-        },
-        complianceStatus: 'pending',
-        pesoRating: 'Pending',
-        technician: 'LAB002'
+          setQualityTests(tests.filter((t: any) => t.complianceStatus !== 'pending'));
+          setPendingTests(tests.filter((t: any) => t.complianceStatus === 'pending'));
+        }
+      } catch (error) {
+        console.error('Failed to fetch quality tests:', error);
       }
-    ];
+    };
 
-    setQualityTests(mockTests);
-    setPendingTests(mockPending);
+    fetchData();
+    const interval = setInterval(fetchData, 15000); // Refresh every 15 seconds
+    return () => clearInterval(interval);
   }, []);
 
   const getComplianceLevel = (ch4Percentage: number) => {
@@ -212,44 +141,59 @@ export const QualityControl: React.FC = () => {
     }
   };
 
-  const handleSubmitTest = () => {
-    const grade = getGradeFromCH4(newTestForm.parameters.ch4);
-    const compliance = getComplianceLevel(newTestForm.parameters.ch4);
+  const handleSubmitTest = async () => {
+    try {
+      // Match backend QualityTestRequest DTO structure
+      const testData = {
+        cycleId: newTestForm.cycleId, // String UUID, not integer
+        ch4Percentage: newTestForm.parameters.ch4,
+        co2Percentage: newTestForm.parameters.co2,
+        h2sContentPpm: newTestForm.parameters.h2s,
+        // Backend expects these optional fields:
+        o2Percentage: 0, // Default value
+        n2Percentage: 0, // Default value
+        waterVaporPpm: newTestForm.parameters.moisture * 10000, // Convert moisture % to ppm approximation
+        pressureBar: 0, // Not captured in form
+        temperatureCelsius: 0, // Not captured in form
+        technicianId: newTestForm.technician,
+        notes: newTestForm.labResults
+      };
 
-    const newTest: QualityTest = {
-      id: `test-${Date.now()}`,
-      batchId: newTestForm.batchId,
-      cycleId: newTestForm.cycleId,
-      testDate: new Date(),
-      testType: newTestForm.testType,
-      parameters: newTestForm.parameters,
-      complianceStatus: newTestForm.parameters.ch4 >= DEFAULT_QUALITY_THRESHOLDS.ch4Min ? 'pass' : 'fail',
-      pesoRating: compliance.level,
-      technician: newTestForm.technician,
-      certificationNumber: compliance.level !== 'Failed' ? `PESO-2024-${compliance.level}-${Date.now().toString().slice(-3)}` : undefined,
-      labResults: newTestForm.labResults
-    };
+      const response = await apiService.submitQualityTest(testData);
+      if (response.success && response.data) {
+        const compliance = getComplianceLevel(newTestForm.parameters.ch4);
+        const newTest: QualityTest = {
+          ...response.data,
+          testDate: new Date(response.data.testDate || response.data.createdAt),
+          parameters: newTestForm.parameters,
+          complianceStatus: response.data.passed ? 'pass' : 'fail',
+          pesoRating: compliance.level,
+          certificationNumber: compliance.level !== 'Failed' ? `PESO-2024-${compliance.level}-${Date.now().toString().slice(-3)}` : undefined,
+          labResults: newTestForm.labResults
+        };
 
-    setQualityTests(prev => [newTest, ...prev]);
+        setQualityTests(prev => [newTest, ...prev]);
+        setPendingTests(prev => prev.filter(t => t.batchId !== newTestForm.batchId));
 
-    // Remove from pending if it exists
-    setPendingTests(prev => prev.filter(t => t.batchId !== newTestForm.batchId));
-
-    // Reset form
-    setNewTestForm({
-      batchId: '',
-      cycleId: '',
-      testType: 'final_quality',
-      parameters: {
-        ch4: 0,
-        co2: 0,
-        h2s: 0,
-        moisture: 0,
-        calificValue: 0,
-        density: 0
-      },
-      technician: 'CURRENT_USER'
-    });
+        // Reset form
+        setNewTestForm({
+          batchId: '',
+          cycleId: '',
+          testType: 'final_quality',
+          parameters: {
+            ch4: 0,
+            co2: 0,
+            h2s: 0,
+            moisture: 0,
+            calificValue: 0,
+            density: 0
+          },
+          technician: 'CURRENT_USER'
+        });
+      }
+    } catch (error) {
+      console.error('Failed to submit quality test:', error);
+    }
   };
 
   const filteredTests = qualityTests.filter(test =>

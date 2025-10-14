@@ -24,50 +24,79 @@ import {
   Users,
   Package
 } from 'lucide-react';
+import { apiService } from '@/services/api';
 
 // Simplified Dashboard Component
 const Dashboard: React.FC = () => {
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [isLoading, setIsLoading] = useState(false);
 
-  // Mock data for real-time metrics
+  // Real-time metrics from API
   const [metrics, setMetrics] = useState({
-    ch4Percentage: 94.5,
-    pressure: 2.1,
-    temperature: 37.5,
-    flowRate: 125,
-    h2sLevel: 12,
-    co2Level: 2.5,
-    moisture: 0.5,
+    ch4Percentage: 0,
+    pressure: 0,
+    temperature: 0,
+    flowRate: 0,
+    h2sLevel: 0,
+    co2Level: 0,
+    moisture: 0,
     systemStatus: 'operational' as const
   });
 
-  // Update metrics every 3 seconds
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setMetrics(prev => ({
-        ...prev,
-        ch4Percentage: prev.ch4Percentage + (Math.random() - 0.5) * 2,
-        pressure: Math.max(1.8, Math.min(2.4, prev.pressure + (Math.random() - 0.5) * 0.2)),
-        temperature: Math.max(35, Math.min(40, prev.temperature + (Math.random() - 0.5) * 1)),
-        flowRate: Math.max(100, Math.min(150, prev.flowRate + (Math.random() - 0.5) * 10)),
-        h2sLevel: Math.max(8, Math.min(16, prev.h2sLevel + (Math.random() - 0.5) * 2)),
-        co2Level: Math.max(1.5, Math.min(3.5, prev.co2Level + (Math.random() - 0.5) * 0.5)),
-        moisture: Math.max(0.3, Math.min(0.7, prev.moisture + (Math.random() - 0.5) * 0.1))
-      }));
-      setLastUpdated(new Date());
-    }, 3000);
+  // Active cycles from API
+  const [activeCycles, setActiveCycles] = useState<any[]>([]);
 
+  // Fetch real-time metrics from API
+  const fetchMetrics = async () => {
+    try {
+      const response = await apiService.getPurificationRealtimeMetrics();
+      if (response.success && response.data) {
+        setMetrics({
+          ch4Percentage: response.data.averageCh4Percentage || 94.5,
+          pressure: response.data.averagePressure || 2.1,
+          temperature: response.data.averageTemperature || 37.5,
+          flowRate: response.data.totalFlowRate || 125,
+          h2sLevel: response.data.averageH2sLevel || 12,
+          co2Level: response.data.averageCo2Level || 2.5,
+          moisture: response.data.averageMoisture || 0.5,
+          systemStatus: 'operational'
+        });
+      }
+      setLastUpdated(new Date());
+    } catch (error) {
+      console.error('Failed to fetch metrics:', error);
+      // Keep previous values on error
+    }
+  };
+
+  // Fetch active cycles from API
+  const fetchActiveCycles = async () => {
+    try {
+      const response = await apiService.getPurificationCycles({ status: 'IN_PROGRESS', page: 0, size: 10 });
+      if (response.success && response.data) {
+        setActiveCycles(response.data.content || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch active cycles:', error);
+    }
+  };
+
+  // Fetch data on mount and every 5 seconds
+  useEffect(() => {
+    fetchMetrics();
+    fetchActiveCycles();
+    const interval = setInterval(() => {
+      fetchMetrics();
+      fetchActiveCycles();
+    }, 5000);
     return () => clearInterval(interval);
   }, []);
 
   const handleRefresh = async () => {
     setIsLoading(true);
-    // Simulate refresh delay
-    setTimeout(() => {
-      setIsLoading(false);
-      setLastUpdated(new Date());
-    }, 1000);
+    await fetchMetrics();
+    await fetchActiveCycles();
+    setIsLoading(false);
   };
 
   // Simple gauge component
@@ -107,34 +136,6 @@ const Dashboard: React.FC = () => {
       </div>
     );
   };
-
-  // Mock active cycles
-  const activeCycles = [
-    {
-      id: 'cycle-001',
-      batchId: 'BATCH-20241122-001',
-      progress: 65,
-      targetCH4: 95.0,
-      status: 'running',
-      remainingTime: 23
-    },
-    {
-      id: 'cycle-002',
-      batchId: 'BATCH-20241122-002',
-      progress: 45,
-      targetCH4: 96.5,
-      status: 'running',
-      remainingTime: 42
-    },
-    {
-      id: 'cycle-003',
-      batchId: 'BATCH-20241122-003',
-      progress: 85,
-      targetCH4: 94.0,
-      status: 'running',
-      remainingTime: 8
-    }
-  ];
 
   return (
     <div className="space-y-6">
@@ -235,119 +236,70 @@ const Dashboard: React.FC = () => {
             <CardDescription>Real-time cycle monitoring with performance metrics</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {activeCycles.map((cycle, index) => {
-              const efficiency = 94 + (Math.random() * 6); // 94-100% efficiency
-              const currentCH4 = cycle.targetCH4 - (100 - cycle.progress) * 0.1; // Gradual increase
+            {activeCycles.length > 0 ? (
+              activeCycles.map((cycle) => {
+                // Calculate progress percentage
+                const progress = cycle.currentCh4Percentage && cycle.targetCh4Percentage
+                  ? ((cycle.currentCh4Percentage / cycle.targetCh4Percentage) * 100).toFixed(0)
+                  : 0;
 
-              return (
-                <div key={cycle.id} className="border rounded-lg p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-medium">{cycle.batchId}</h4>
-                      <p className="text-sm text-gray-600">
-                        Target: {cycle.targetCH4}% CH₄ • Current: {currentCH4.toFixed(1)}%
-                      </p>
-                      <p className="text-xs text-blue-600">
-                        Unit {index + 1} • Efficiency: {efficiency.toFixed(1)}%
-                      </p>
+                return (
+                  <div key={cycle.id} className="border rounded-lg p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="font-medium">{cycle.batchId || `Cycle-${cycle.id}`}</h4>
+                        <p className="text-sm text-gray-600">
+                          Target: {cycle.targetCh4Percentage?.toFixed(1) || 'N/A'}% CH₄ • Current: {cycle.currentCh4Percentage?.toFixed(1) || 'N/A'}%
+                        </p>
+                        <p className="text-xs text-blue-600">
+                          Unit {cycle.unitId || 'N/A'} • Status: {cycle.status || 'UNKNOWN'}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <Badge variant="default" className="mb-1">
+                          {cycle.status || 'IN_PROGRESS'}
+                        </Badge>
+                        <div className="text-xs text-gray-500">
+                          {cycle.startTime ? new Date(cycle.startTime).toLocaleString() : 'N/A'}
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <Badge variant="default" className="mb-1">
-                        {cycle.status}
-                      </Badge>
-                      <div className="text-xs text-gray-500">
-                        {cycle.remainingTime} min left
+
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span>Cycle Progress</span>
+                        <span>{progress}% complete</span>
+                      </div>
+                      <Progress value={Number(progress)} className="h-2" />
+
+                      {/* Cycle Performance Indicators */}
+                      <div className="grid grid-cols-3 gap-2 mt-3 text-xs">
+                        <div className="text-center p-2 bg-green-50 rounded">
+                          <div className="font-medium text-green-700">Current CH₄</div>
+                          <div className="text-green-600">{cycle.currentCh4Percentage?.toFixed(1) || 'N/A'}%</div>
+                        </div>
+                        <div className="text-center p-2 bg-blue-50 rounded">
+                          <div className="font-medium text-blue-700">Pressure</div>
+                          <div className="text-blue-600">{cycle.currentPressure?.toFixed(1) || 'N/A'} bar</div>
+                        </div>
+                        <div className="text-center p-2 bg-purple-50 rounded">
+                          <div className="font-medium text-purple-700">Temperature</div>
+                          <div className="text-purple-600">{cycle.currentTemperature?.toFixed(1) || 'N/A'}°C</div>
+                        </div>
                       </div>
                     </div>
                   </div>
-
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span>Cycle Progress</span>
-                      <span>{cycle.progress}% complete</span>
-                    </div>
-                    <Progress value={cycle.progress} className="h-2" />
-
-                    {/* Cycle Performance Indicators */}
-                    <div className="grid grid-cols-3 gap-2 mt-3 text-xs">
-                      <div className="text-center p-2 bg-green-50 rounded">
-                        <div className="font-medium text-green-700">CH₄ Rise</div>
-                        <div className="text-green-600">+{(currentCH4 - 88).toFixed(1)}%</div>
-                      </div>
-                      <div className="text-center p-2 bg-blue-50 rounded">
-                        <div className="font-medium text-blue-700">Flow Rate</div>
-                        <div className="text-blue-600">{(120 + index * 15).toFixed(0)} m³/h</div>
-                      </div>
-                      <div className="text-center p-2 bg-purple-50 rounded">
-                        <div className="font-medium text-purple-700">Efficiency</div>
-                        <div className="text-purple-600">{efficiency.toFixed(1)}%</div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-
-            {/* Cycle Summary */}
-            <div className="border-t pt-3 mt-4">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="text-gray-600">Total Throughput:</span>
-                  <span className="font-medium ml-2">405 m³/h</span>
-                </div>
-                <div>
-                  <span className="text-gray-600">Avg Efficiency:</span>
-                  <span className="font-medium ml-2">96.8%</span>
-                </div>
+                );
+              })
+            ) : (
+              <div className="text-center text-gray-500 py-8">
+                No active cycles running
               </div>
-            </div>
+            )}
           </CardContent>
         </Card>
 
-        {/* Batch Queue Widget */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center space-x-2">
-              <Package className="w-5 h-5 text-indigo-600" />
-              <span>Batch Queue</span>
-              <Badge variant="secondary">2 Pending</Badge>
-            </CardTitle>
-            <CardDescription>Incoming batches from BiogasSangh units</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="border rounded-lg p-3">
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="font-medium">BATCH-20241122-004</h4>
-                <Badge variant="outline">queued</Badge>
-              </div>
-              <div className="text-sm text-gray-600 space-y-1">
-                <p>Source: BiogasSangh Unit A</p>
-                <p>Volume: 2,500 L</p>
-                <p className="flex items-center">
-                  <CheckCircle className="w-3 h-3 text-green-500 mr-1" />
-                  2 docs verified
-                </p>
-              </div>
-            </div>
-
-            <div className="border rounded-lg p-3">
-              <div className="flex items-center justify-between mb-2">
-                <h4 className="font-medium">BATCH-20241122-005</h4>
-                <Badge variant="outline">queued</Badge>
-              </div>
-              <div className="text-sm text-gray-600 space-y-1">
-                <p>Source: Direct Producer Farm 12</p>
-                <p>Volume: 1,800 L</p>
-                <p className="flex items-center">
-                  <CheckCircle className="w-3 h-3 text-green-500 mr-1" />
-                  1 doc verified
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* System Overview Card */}
+        {/* System Overview Card - Using real metrics */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
@@ -357,27 +309,27 @@ const Dashboard: React.FC = () => {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Overall Efficiency</span>
-              <span className="text-xl font-bold text-green-600">94.2%</span>
+              <span className="text-sm font-medium">CH₄ Purity</span>
+              <span className="text-xl font-bold text-green-600">{metrics.ch4Percentage.toFixed(1)}%</span>
             </div>
-            <Progress value={94.2} className="h-2" />
+            <Progress value={metrics.ch4Percentage} className="h-2" />
 
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
-                <p className="text-gray-600">Daily Output</p>
-                <p className="font-semibold">12,450 m³</p>
+                <p className="text-gray-600">Flow Rate</p>
+                <p className="font-semibold">{metrics.flowRate.toFixed(0)} m³/h</p>
               </div>
               <div>
-                <p className="text-gray-600">Quality Pass Rate</p>
-                <p className="font-semibold">98.7%</p>
+                <p className="text-gray-600">Pressure</p>
+                <p className="font-semibold">{metrics.pressure.toFixed(1)} bar</p>
               </div>
               <div>
-                <p className="text-gray-600">Active Units</p>
-                <p className="font-semibold">3/3</p>
+                <p className="text-gray-600">Temperature</p>
+                <p className="font-semibold">{metrics.temperature.toFixed(1)}°C</p>
               </div>
               <div>
-                <p className="text-gray-600">Uptime</p>
-                <p className="font-semibold">99.2%</p>
+                <p className="text-gray-600">Moisture</p>
+                <p className="font-semibold">{metrics.moisture.toFixed(1)}%</p>
               </div>
             </div>
           </CardContent>

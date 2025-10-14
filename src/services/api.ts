@@ -412,6 +412,422 @@ class ApiService {
     }
   }
 
+  // Purification Service APIs (Port 8087)
+  // Metrics APIs
+  async getPurificationRealtimeMetrics(): Promise<ApiResponse<any>> {
+    try {
+      const response = await microservicesClient.callService('purification-service', '/purification-service/api/v1/metrics/realtime');
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to fetch realtime metrics');
+      }
+
+      return { success: true, data };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to fetch realtime metrics'
+      };
+    }
+  }
+
+  async getPurificationUnitMetrics(unitId: string): Promise<ApiResponse<any>> {
+    try {
+      const response = await microservicesClient.callService('purification-service', `/purification-service/api/v1/metrics/unit/${unitId}`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to fetch unit metrics');
+      }
+
+      return { success: true, data };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to fetch unit metrics'
+      };
+    }
+  }
+
+  // Cycle Management APIs
+  async getPurificationCycles(params?: { page?: number; size?: number; status?: string }): Promise<ApiResponse<any>> {
+    try {
+      const queryParams = new URLSearchParams();
+      if (params?.page !== undefined) queryParams.append('page', params.page.toString());
+      if (params?.size !== undefined) queryParams.append('size', params.size.toString());
+      if (params?.status) queryParams.append('status', params.status);
+
+      const url = `/purification-service/api/v1/cycles${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+      const response = await microservicesClient.callService('purification-service', url);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to fetch cycles');
+      }
+
+      return { success: true, data };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to fetch cycles'
+      };
+    }
+  }
+
+  async createPurificationCycle(cycleData: any): Promise<ApiResponse<any>> {
+    try {
+      const response = await microservicesClient.callService('purification-service', '/purification-service/api/v1/cycles', {
+        method: 'POST',
+        body: JSON.stringify(cycleData)
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to create cycle');
+      }
+
+      return { success: true, data };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to create cycle'
+      };
+    }
+  }
+
+  async getPurificationCycleById(id: string): Promise<ApiResponse<any>> {
+    try {
+      const response = await microservicesClient.callService('purification-service', `/purification-service/api/v1/cycles/${id}`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to fetch cycle');
+      }
+
+      return { success: true, data };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to fetch cycle'
+      };
+    }
+  }
+
+  async completePurificationCycle(id: string, completionData: any): Promise<ApiResponse<any>> {
+    try {
+      const response = await microservicesClient.callService('purification-service', `/purification-service/api/v1/cycles/${id}/complete`, {
+        method: 'POST',
+        body: JSON.stringify(completionData)
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to complete cycle');
+      }
+
+      return { success: true, data };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to complete cycle'
+      };
+    }
+  }
+
+  // Purification Units APIs
+  async getPurificationUnits(params?: { page?: number; size?: number; status?: string }): Promise<ApiResponse<any>> {
+    try {
+      const queryParams = new URLSearchParams();
+      if (params?.page !== undefined) queryParams.append('page', params.page.toString());
+      if (params?.size !== undefined) queryParams.append('size', params.size.toString());
+      if (params?.status) queryParams.append('status', params.status);
+
+      const url = `/purification-service/api/v1/metrics/units${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+      const response = await microservicesClient.callService('purification-service', url);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to fetch purification units');
+      }
+
+      return { success: true, data };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to fetch purification units'
+      };
+    }
+  }
+
+  // Quality Control APIs
+  async submitQualityTest(testData: any): Promise<ApiResponse<any>> {
+    try {
+      const response = await microservicesClient.callService('purification-service', '/purification-service/api/v1/quality/tests', {
+        method: 'POST',
+        body: JSON.stringify(testData)
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to submit quality test');
+      }
+
+      return { success: true, data };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to submit quality test'
+      };
+    }
+  }
+
+  async getQualityTests(params?: { page?: number; size?: number }): Promise<ApiResponse<any>> {
+    try {
+      const queryParams = new URLSearchParams();
+      if (params?.page !== undefined) queryParams.append('page', params.page.toString());
+      if (params?.size !== undefined) queryParams.append('size', params.size.toString());
+
+      const url = `/purification-service/api/v1/quality/tests${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+      const response = await microservicesClient.callService('purification-service', url);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to fetch quality tests');
+      }
+
+      return { success: true, data };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to fetch quality tests'
+      };
+    }
+  }
+
+  async getComplianceStatus(): Promise<ApiResponse<any>> {
+    try {
+      const response = await microservicesClient.callService('purification-service', '/purification-service/api/v1/quality/compliance');
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to fetch compliance status');
+      }
+
+      return { success: true, data };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to fetch compliance status'
+      };
+    }
+  }
+
+  // Inventory APIs
+  async getPurificationInventory(): Promise<ApiResponse<any>> {
+    try {
+      const response = await microservicesClient.callService('purification-service', '/purification-service/api/v1/inventory');
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to fetch inventory');
+      }
+
+      return { success: true, data };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to fetch inventory'
+      };
+    }
+  }
+
+  async createInventoryTransfer(transferData: any): Promise<ApiResponse<any>> {
+    try {
+      const response = await microservicesClient.callService('purification-service', '/purification-service/api/v1/inventory/transfer', {
+        method: 'POST',
+        body: JSON.stringify(transferData)
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to create inventory transfer');
+      }
+
+      return { success: true, data };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to create inventory transfer'
+      };
+    }
+  }
+
+  async getBatchTracking(batchId: string): Promise<ApiResponse<any>> {
+    try {
+      const response = await microservicesClient.callService('purification-service', `/purification-service/api/v1/inventory/batch/${batchId}`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to fetch batch tracking');
+      }
+
+      return { success: true, data };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to fetch batch tracking'
+      };
+    }
+  }
+
+  // Slurry Management APIs
+  async getSlurryOutputs(): Promise<ApiResponse<any>> {
+    try {
+      const response = await microservicesClient.callService('purification-service', '/purification-service/api/v1/slurry/outputs');
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to fetch slurry outputs');
+      }
+
+      return { success: true, data };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to fetch slurry outputs'
+      };
+    }
+  }
+
+  async createSlurryOutput(slurryData: any): Promise<ApiResponse<any>> {
+    try {
+      const response = await microservicesClient.callService('purification-service', '/purification-service/api/v1/slurry/outputs', {
+        method: 'POST',
+        body: JSON.stringify(slurryData)
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to create slurry output');
+      }
+
+      return { success: true, data };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to create slurry output'
+      };
+    }
+  }
+
+  async gradeSlurry(gradingData: any): Promise<ApiResponse<any>> {
+    try {
+      const response = await microservicesClient.callService('purification-service', '/purification-service/api/v1/slurry/grading', {
+        method: 'POST',
+        body: JSON.stringify(gradingData)
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to grade slurry');
+      }
+
+      return { success: true, data };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to grade slurry'
+      };
+    }
+  }
+
+  // Maintenance APIs
+  async createMaintenanceSchedule(scheduleData: any): Promise<ApiResponse<any>> {
+    try {
+      const response = await microservicesClient.callService('purification-service', '/purification-service/api/v1/maintenance/schedule', {
+        method: 'POST',
+        body: JSON.stringify(scheduleData)
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to create maintenance schedule');
+      }
+
+      return { success: true, data };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to create maintenance schedule'
+      };
+    }
+  }
+
+  async getMaintenanceSchedules(unitId?: string): Promise<ApiResponse<any>> {
+    try {
+      const url = unitId
+        ? `/purification-service/api/v1/maintenance/unit/${unitId}/schedules`
+        : '/purification-service/api/v1/maintenance/schedules';
+      const response = await microservicesClient.callService('purification-service', url);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to fetch maintenance schedules');
+      }
+
+      return { success: true, data };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to fetch maintenance schedules'
+      };
+    }
+  }
+
+  async createWorkOrder(workOrderData: any): Promise<ApiResponse<any>> {
+    try {
+      const response = await microservicesClient.callService('purification-service', '/purification-service/api/v1/maintenance/work-orders', {
+        method: 'POST',
+        body: JSON.stringify(workOrderData)
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to create work order');
+      }
+
+      return { success: true, data };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to create work order'
+      };
+    }
+  }
+
+  async getMaintenanceHistory(unitId: string, params?: { days?: number }): Promise<ApiResponse<any>> {
+    try {
+      const queryParams = new URLSearchParams();
+      if (params?.days) queryParams.append('days', params.days.toString());
+
+      const url = `/purification-service/api/v1/maintenance/unit/${unitId}/history${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+      const response = await microservicesClient.callService('purification-service', url);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to fetch maintenance history');
+      }
+
+      return { success: true, data };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to fetch maintenance history'
+      };
+    }
+  }
+
   // Health Check for all services
   async healthCheck(): Promise<ApiResponse<Record<string, boolean>>> {
     try {

@@ -75,7 +75,7 @@ class UserManagementService {
 
       const response = await microservicesClient.callService(
         this.SERVICE_NAME,
-        `/auth/api/auth/users?${params.toString()}`,
+        `/api/auth/users?${params.toString()}`,
         { method: 'GET' }
       );
 
@@ -101,7 +101,7 @@ class UserManagementService {
     try {
       const response = await microservicesClient.callService(
         this.SERVICE_NAME,
-        `/auth/api/auth/users/${id}`,
+        `/api/auth/users/${id}`,
         { method: 'GET' }
       );
 
@@ -127,7 +127,7 @@ class UserManagementService {
     try {
       const response = await microservicesClient.callService(
         this.SERVICE_NAME,
-        '/auth/api/auth/users',
+        '/api/auth/users',
         {
           method: 'POST',
           body: JSON.stringify(data),
@@ -156,7 +156,7 @@ class UserManagementService {
     try {
       const response = await microservicesClient.callService(
         this.SERVICE_NAME,
-        `/auth/api/auth/users/${id}`,
+        `/api/auth/users/${id}`,
         {
           method: 'PUT',
           body: JSON.stringify(data),
@@ -185,7 +185,7 @@ class UserManagementService {
     try {
       const response = await microservicesClient.callService(
         this.SERVICE_NAME,
-        `/auth/api/auth/users/${id}`,
+        `/api/auth/users/${id}`,
         { method: 'DELETE' }
       );
 
@@ -209,7 +209,7 @@ class UserManagementService {
     try {
       const response = await microservicesClient.callService(
         this.SERVICE_NAME,
-        `/auth/api/auth/users/${id}/toggle-status`,
+        `/api/auth/users/${id}/toggle-status`,
         { method: 'PUT' }
       );
 
@@ -238,7 +238,7 @@ class UserManagementService {
     try {
       const response = await microservicesClient.callService(
         this.SERVICE_NAME,
-        `/auth/api/auth/users/${id}/permissions`,
+        `/api/auth/users/${id}/permissions`,
         {
           method: 'PUT',
           body: JSON.stringify(data),

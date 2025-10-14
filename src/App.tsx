@@ -19,8 +19,19 @@ import RoleBasedRouter from './components/routing/RoleBasedRouter'
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
 
+  console.log('🔒 [PrivateRoute] Check -', {
+    user: user ? `${user.name} (${user.role})` : 'null',
+    loading,
+    willRedirect: !user && !loading
+  })
+
   if (loading) {
+    console.log('⏳ [PrivateRoute] Still loading, showing spinner')
     return <div className="flex items-center justify-center min-h-screen">Loading...</div>
+  }
+
+  if (!user) {
+    console.log('🚫 [PrivateRoute] No user found, redirecting to /login')
   }
 
   return user ? <>{children}</> : <Navigate to="/login" />
