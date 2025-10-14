@@ -1352,9 +1352,44 @@ export const inventoryApi = {
     return apiCall<PagedResponse<Inventory>>(`/api/v1/gaushala/inventory?page=${page}&size=${size}`);
   },
 
+  // async getInventoryById(id: number): Promise<ApiResponse<Inventory>> {
+  //   return apiCall<Inventory>(`/api/v1/gaushala/inventory/${id}`);
+  // },
+
   async getInventoryById(id: number): Promise<ApiResponse<Inventory>> {
-    return apiCall<Inventory>(`/api/v1/gaushala/inventory/${id}`);
+    try {
+      const response = await fetch(`${GAUSHALA_SERVICE_URL}/api/v1/gaushala/inventory/${id}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(localStorage.getItem('saubhagya_jwt_token') && {
+            Authorization: `Bearer ${localStorage.getItem('saubhagya_jwt_token')}`
+          }),
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        return {
+          success: false,
+          error: error.message || `HTTP error! status: ${response.status}`,
+        };
+      }
+
+      const data = await response.json();
+      return {
+        success: true,
+        data,
+      };
+    } catch (error) {
+      console.error('Get food history by ID failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+      };
+    }
   },
+
+  
 
   async createInventory(inventory: Omit<Inventory, 'id' | 'createdAt' | 'updatedAt'>): Promise<ApiResponse<Inventory>> {
     return apiCall<Inventory>(`/api/v1/gaushala/inventory`, {

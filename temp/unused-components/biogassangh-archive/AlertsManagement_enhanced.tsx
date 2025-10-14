@@ -593,12 +593,11 @@ const AlertCard: React.FC<{
   t: (key: string) => string;
 }> = ({ alert, onResolve, onDismiss, t }) => {
   return (
-    <Card className={`border-l-4 ${
-      alert.level === 'critical' ? 'border-l-red-500' :
-      alert.level === 'warning' ? 'border-l-yellow-500' :
-      alert.level === 'info' ? 'border-l-blue-500' :
-      'border-l-green-500'
-    }`}>
+    <Card className={`border-l-4 ${alert.level === 'critical' ? 'border-l-red-500' :
+        alert.level === 'warning' ? 'border-l-yellow-500' :
+          alert.level === 'info' ? 'border-l-blue-500' :
+            'border-l-green-500'
+      }`}>
       <CardContent className="p-4">
         <div className="flex items-start justify-between">
           <div className="space-y-2 flex-1">
@@ -714,7 +713,7 @@ const ThresholdConfigCard: React.FC<{
                   id={`${config.type}-min`}
                   type="number"
                   value={localConfig.minThreshold}
-                  onChange={(e) => setLocalConfig(prev => ({
+                  onChange={(e:any) => setLocalConfig(prev => ({
                     ...prev,
                     minThreshold: parseFloat(e.target.value) || 0
                   }))}
@@ -788,7 +787,7 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
   );
 
   const systemStatus = criticalAlerts.length > 0 ? 'critical' :
-                     warningAlerts.length > 0 ? 'warning' : 'normal';
+    warningAlerts.length > 0 ? 'warning' : 'normal';
 
   const handleResolveAlert = async (alertId: string) => {
     await resolveAlert(alertId);
@@ -834,15 +833,12 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
 
       {/* System Status Alert */}
       {systemStatus !== 'normal' && (
-        <Alert className={`${
-          systemStatus === 'critical' ? 'border-red-200 bg-red-50' : 'border-yellow-200 bg-yellow-50'
-        }`}>
-          <AlertTriangle className={`h-4 w-4 ${
-            systemStatus === 'critical' ? 'text-red-600' : 'text-yellow-600'
-          }`} />
-          <AlertDescription className={`${
-            systemStatus === 'critical' ? 'text-red-800' : 'text-yellow-800'
+        <Alert className={`${systemStatus === 'critical' ? 'border-red-200 bg-red-50' : 'border-yellow-200 bg-yellow-50'
           }`}>
+          <AlertTriangle className={`h-4 w-4 ${systemStatus === 'critical' ? 'text-red-600' : 'text-yellow-600'
+            }`} />
+          <AlertDescription className={`${systemStatus === 'critical' ? 'text-red-800' : 'text-yellow-800'
+            }`}>
             {systemStatus === 'critical' ? t('criticalIssues') : t('someIssues')}
             {systemStatus === 'critical' && ` - ${criticalAlerts.length} critical alerts require immediate attention.`}
           </AlertDescription>
