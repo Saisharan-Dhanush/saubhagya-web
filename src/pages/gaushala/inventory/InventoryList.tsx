@@ -278,7 +278,7 @@ export default function InventoryList() {
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => navigate(`/gaushala/inventory/${item.id}/history`)}
+                        onClick={() => navigate(`/gaushala/inventory/${item.id}/stock-history`)}
                         className="text-gray-600 hover:text-gray-900"
                         title="View Stock History"
                       >
