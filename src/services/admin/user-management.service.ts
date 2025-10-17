@@ -258,6 +258,59 @@ class UserManagementService {
       );
     }
   }
+
+  /**
+   * Get all available roles
+   * GET /api/auth/users/roles
+   */
+  async getRoles(): Promise<Array<{ id: number; roleName: string; description: string; isActive: boolean }>> {
+    try {
+      const response = await microservicesClient.callService(
+        this.SERVICE_NAME,
+        '/api/auth/users/roles',
+        { method: 'GET' }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to fetch roles');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to fetch roles:', error);
+      throw new Error(
+        error instanceof Error ? error.message : 'Failed to fetch roles'
+      );
+    }
+  }
+
+  /**
+   * Admin reset user password
+   * PUT /api/auth/users/{id}/reset-password
+   */
+  async resetUserPassword(id: string, newPassword: string): Promise<void> {
+    try {
+      const response = await microservicesClient.callService(
+        this.SERVICE_NAME,
+        `/api/auth/users/${id}/reset-password`,
+        {
+          method: 'PUT',
+          body: JSON.stringify({ newPassword }),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to reset password');
+      }
+    } catch (error) {
+      console.error('Failed to reset password:', error);
+      throw new Error(
+        error instanceof Error ? error.message : 'Failed to reset password'
+      );
+    }
+  }
 }
 
 export const userManagementService = new UserManagementService();

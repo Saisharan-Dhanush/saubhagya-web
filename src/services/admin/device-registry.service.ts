@@ -318,6 +318,88 @@ class DeviceRegistryService {
       );
     }
   }
+
+  /**
+   * Create a new device
+   * POST /api/v1/devices
+   */
+  async createDevice(deviceData: Partial<Device>): Promise<Device> {
+    try {
+      const response = await microservicesClient.callService(
+        this.SERVICE_NAME,
+        '/api/v1/devices',
+        {
+          method: 'POST',
+          body: JSON.stringify(deviceData),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to create device');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to create device:', error);
+      throw new Error(
+        error instanceof Error ? error.message : 'Failed to create device'
+      );
+    }
+  }
+
+  /**
+   * Update an existing device
+   * PUT /api/v1/devices/{id}
+   */
+  async updateDevice(id: number, deviceData: Partial<Device>): Promise<Device> {
+    try {
+      const response = await microservicesClient.callService(
+        this.SERVICE_NAME,
+        `/api/v1/devices/${id}`,
+        {
+          method: 'PUT',
+          body: JSON.stringify(deviceData),
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to update device');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to update device:', error);
+      throw new Error(
+        error instanceof Error ? error.message : 'Failed to update device'
+      );
+    }
+  }
+
+  /**
+   * Delete a device
+   * DELETE /api/v1/devices/{id}
+   */
+  async deleteDevice(id: number): Promise<void> {
+    try {
+      const response = await microservicesClient.callService(
+        this.SERVICE_NAME,
+        `/api/v1/devices/${id}`,
+        { method: 'DELETE' }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to delete device');
+      }
+    } catch (error) {
+      console.error('Failed to delete device:', error);
+      throw new Error(
+        error instanceof Error ? error.message : 'Failed to delete device'
+      );
+    }
+  }
 }
 
 export const deviceRegistryService = new DeviceRegistryService();

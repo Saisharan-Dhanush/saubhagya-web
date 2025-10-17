@@ -34,7 +34,7 @@ export default function InventoryDetails({ id }: { id: number }) {
                     <p><strong>Quantity:</strong> {inventory.quantity}</p>
                     <p><strong>Unit:</strong> {inventory.inventoryUnitId}</p>
                     <p><strong>Type:</strong> {inventory.inventoryTypeId}</p>
-                    <p><strong>ReorderLevel:</strong> {inventory.reorderLevel}</p>
+                    <p><strong>Minimum Stock Level:</strong> {inventory.minimumStockLevel || 0}</p>
                     <p><strong>Supplier:</strong> {inventory.supplier}</p>
                     <p><strong>GaushalaId:</strong> {inventory.gaushalaId}</p>
                     <p><strong>CreatedAt:</strong> {inventory.createdAt}</p>

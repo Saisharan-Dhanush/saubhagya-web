@@ -24,10 +24,11 @@ export default function AddInventory() {
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     itemName: '',
+    description: '',
     inventoryTypeId: 0,
     inventoryUnitId: 0,
     quantity: 0,
-    minimumStockLevel: 0,  // Changed from reorderLevel to match backend
+    minimumStockLevel: 0,  // Backend field name
     supplier: '',
     gaushalaId: 1,  // Default to 1
   });
@@ -141,6 +142,20 @@ export default function AddInventory() {
           />
         </div>
 
+        {/* Description */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Description
+          </label>
+          <textarea
+            value={formData.description}
+            onChange={(e) => handleChange('description', e.target.value)}
+            className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            placeholder="Enter item description (optional)"
+            rows={3}
+          />
+        </div>
+
         {/* Inventory Type */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -182,7 +197,7 @@ export default function AddInventory() {
               <option value={0}>Select unit</option>
               {inventoryUnits.map((unit) => (
                 <option key={unit.id} value={unit.id}>
-                  {unit.unitName} {unit.unitSymbol ? `(${unit.unitSymbol})` : ''}
+                  {unit.unitName} {unit.abbreviation ? `(${unit.abbreviation})` : ''}
                 </option>
               ))}
             </select>
@@ -206,10 +221,10 @@ export default function AddInventory() {
           />
         </div>
 
-        {/* Reorder Level */}
+        {/* Minimum Stock Level */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Reorder Level <span className="text-red-500">*</span>
+            Minimum Stock Level <span className="text-red-500">*</span>
           </label>
           <input
             type="number"
@@ -218,7 +233,7 @@ export default function AddInventory() {
             value={formData.minimumStockLevel}
             onChange={(e) => handleChange('minimumStockLevel', parseFloat(e.target.value) || 0)}
             className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            placeholder="Enter reorder level"
+            placeholder="Enter minimum stock level"
             required
           />
           <p className="mt-1 text-sm text-gray-500">

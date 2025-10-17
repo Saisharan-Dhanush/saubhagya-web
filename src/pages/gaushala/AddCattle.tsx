@@ -38,6 +38,7 @@ export default function AddCattle({ languageContext }: AddCattleProps) {
   const [species, setSpecies] = useState<Species[]>([]);
   const [genders, setGenders] = useState<Gender[]>([]);
   const [colors, setColors] = useState<Color[]>([]);
+  const [sheds, setSheds] = useState<any[]>([]);
   const [masterDataLoading, setMasterDataLoading] = useState(true);
 
   const [formData, setFormData] = useState({
@@ -106,17 +107,19 @@ export default function AddCattle({ languageContext }: AddCattleProps) {
     const loadMasterData = async () => {
       setMasterDataLoading(true);
       try {
-        const [breedsRes, speciesRes, gendersRes, colorsRes] = await Promise.all([
+        const [breedsRes, speciesRes, gendersRes, colorsRes, shedsRes] = await Promise.all([
           gauShalaApi.masterData.getAllBreeds(),
           gauShalaApi.masterData.getAllSpecies(),
           gauShalaApi.masterData.getAllGenders(),
           gauShalaApi.masterData.getAllColors(),
+          gauShalaApi.sheds.getAvailableSheds(),
         ]);
 
         if (breedsRes.success && breedsRes.data) setBreeds(breedsRes.data);
         if (speciesRes.success && speciesRes.data) setSpecies(speciesRes.data);
         if (gendersRes.success && gendersRes.data) setGenders(gendersRes.data);
         if (colorsRes.success && colorsRes.data) setColors(colorsRes.data);
+        if (shedsRes.success && shedsRes.data) setSheds(shedsRes.data);
       } catch (error) {
         console.error('Failed to load master data:', error);
         setMessage({
@@ -218,7 +221,8 @@ export default function AddCattle({ languageContext }: AddCattleProps) {
 
     try {
       // Transform formData to match Cattle interface for backend - COMPLETE FIELD MAPPING
-      const cattleData: Omit<Cattle, 'id' | 'createdAt' | 'updatedAt'> = {
+      // NOTE: gaushalaId is NOT sent - backend extracts it from JWT token automatically
+      const cattleData: Omit<Cattle, 'id' | 'createdAt' | 'updatedAt' | 'gaushalaId'> = {
         uniqueAnimalId: formData.uniqueAnimalId,
         name: formData.name || undefined,
         breedId: formData.breedId,
@@ -472,8 +476,8 @@ export default function AddCattle({ languageContext }: AddCattleProps) {
             {/* Basic Identification */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-3">
-                <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
-                  <User className="h-5 w-5 text-blue-600" />
+                <div className="h-10 w-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center">
+                  <User className="h-5 w-5 text-white" />
                 </div>
                 🐄 Basic Identification
               </h2>
@@ -570,8 +574,8 @@ export default function AddCattle({ languageContext }: AddCattleProps) {
             {/* Physical Characteristics */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-3">
-                <div className="h-10 w-10 bg-purple-100 rounded-full flex items-center justify-center">
-                  <Ruler className="h-5 w-5 text-purple-600" />
+                <div className="h-10 w-10 bg-gradient-to-br from-purple-500 to-violet-600 rounded-full flex items-center justify-center">
+                  <Ruler className="h-5 w-5 text-white" />
                 </div>
                 📏 Physical Characteristics
               </h2>
@@ -658,8 +662,8 @@ export default function AddCattle({ languageContext }: AddCattleProps) {
             {/* Health & Medical Records */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-3">
-                <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
-                  <Activity className="h-5 w-5 text-blue-600" />
+                <div className="h-10 w-10 bg-gradient-to-br from-red-500 to-pink-600 rounded-full flex items-center justify-center">
+                  <Activity className="h-5 w-5 text-white" />
                 </div>
                 🩺 Health & Medical Records
               </h2>
@@ -726,8 +730,8 @@ export default function AddCattle({ languageContext }: AddCattleProps) {
                 {genders.find(g => g.name && g.name.toLowerCase() === 'female' && g.id === formData.genderId) && (
                   <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
                     <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-3">
-                      <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
-                        <Baby className="h-5 w-5 text-blue-600" />
+                      <div className="h-10 w-10 bg-gradient-to-br from-pink-500 to-rose-600 rounded-full flex items-center justify-center">
+                        <Baby className="h-5 w-5 text-white" />
                       </div>
                       🤱 Reproductive Details
                     </h2>
@@ -796,8 +800,8 @@ export default function AddCattle({ languageContext }: AddCattleProps) {
                 {/* Origin & Ownership */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
                   <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-3">
-                    <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
-                      <Globe className="h-5 w-5 text-blue-600" />
+                    <div className="h-10 w-10 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-full flex items-center justify-center">
+                      <Globe className="h-5 w-5 text-white" />
                     </div>
                     🌍 Origin & Ownership
                   </h2>
@@ -849,18 +853,22 @@ export default function AddCattle({ languageContext }: AddCattleProps) {
                 {/* Shelter & Feeding */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
                   <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-3">
-                    <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
-                      <Settings className="h-5 w-5 text-blue-600" />
+                    <div className="h-10 w-10 bg-gradient-to-br from-amber-500 to-yellow-600 rounded-full flex items-center justify-center">
+                      <Settings className="h-5 w-5 text-white" />
                     </div>
                     🏠 Shelter & Feeding
                   </h2>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <InputField
-                      label="Shed Number"
+                    <SelectField
+                      label="Shed Assignment"
                       value={formData.shedNumber}
                       onChange={(value: string) => handleInputChange('shedNumber', value)}
-                      placeholder="Assigned shed number"
+                      placeholder={masterDataLoading ? 'Loading sheds...' : sheds.length === 0 ? 'No sheds available' : 'Select Shed'}
+                      options={sheds.map(shed => ({
+                        value: shed.shedNumber,
+                        label: `${shed.shedName} (${shed.currentOccupancy || 0}/${shed.capacity || 0} occupied)`
+                      }))}
                     />
 
                     <SelectField
@@ -896,8 +904,8 @@ export default function AddCattle({ languageContext }: AddCattleProps) {
             {/* Supporting Documents */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 sticky top-4">
               <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-3">
-                <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
-                  <FileText className="h-5 w-5 text-blue-600" />
+                <div className="h-10 w-10 bg-gradient-to-br from-slate-500 to-gray-600 rounded-full flex items-center justify-center">
+                  <FileText className="h-5 w-5 text-white" />
                 </div>
                 📎 Documents
               </h2>

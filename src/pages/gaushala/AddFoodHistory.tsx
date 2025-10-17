@@ -3,10 +3,19 @@
  * Mapped to backend FoodHistoryDTO with exact field names
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Save, ArrowLeft, Calendar, FileText } from 'lucide-react';
-import { foodHistoryApi, type FoodHistory } from '../../services/gaushala/api';
+import { Save, ArrowLeft, Calendar, FileText, Search, ChevronDown } from 'lucide-react';
+import {
+  foodHistoryApi,
+  cattleApi,
+  shedApi,
+  inventoryApi,
+  type FoodHistory,
+  type Cattle,
+  type Shed,
+  type Inventory
+} from '../../services/gaushala/api';
 
 interface FoodHistoryFormData {
   livestockId: number;
@@ -23,10 +32,11 @@ export default function AddFoodHistory() {
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // TODO: Fetch these from backend APIs when available
-  const [cattle, setCattle] = useState<any[]>([]);
-  const [sheds, setSheds] = useState<any[]>([]);
-  const [inventory, setInventory] = useState<any[]>([]);
+  // Dropdown data from backend APIs
+  const [cattle, setCattle] = useState<{ id: number; name: string }[]>([]);
+  const [sheds, setSheds] = useState<{ id: number; name: string }[]>([]);
+  const [inventory, setInventory] = useState<{ id: number; name: string }[]>([]);
+  const [dataLoading, setDataLoading] = useState(true);
 
   const [formData, setFormData] = useState<FoodHistoryFormData>({
     livestockId: 0,
@@ -41,29 +51,64 @@ export default function AddFoodHistory() {
   const [errors, setErrors] = useState<Partial<Record<keyof FoodHistoryFormData, string>>>({});
 
   useEffect(() => {
-    // TODO: Fetch cattle, sheds, and inventory from backend
-    // For now using mock data
-    setCattle([
-      { id: 1, name: 'Cow 001 - Ganga' },
-      { id: 2, name: 'Cow 002 - Yamuna' },
-      { id: 3, name: 'Cow 003 - Saraswati' }
-    ]);
+    // Fetch cattle, sheds, and inventory from backend APIs
+    const fetchDropdownData = async () => {
+      setDataLoading(true);
+      try {
+        // Fetch all data in parallel
+        const [cattleResponse, shedsResponse, inventoryResponse] = await Promise.all([
+          cattleApi.getAllCattle(0, 1000), // Fetch more cattle for dropdown
+          shedApi.getAllSheds(0, 100),
+          inventoryApi.getAllInventory(0, 100)
+        ]);
 
-    setSheds([
-      { id: 1, name: 'Shed 1' },
-      { id: 2, name: 'Shed 2' },
-      { id: 3, name: 'Shed 3' },
-      { id: 4, name: 'Shed 4' },
-      { id: 5, name: 'Shed 5' }
-    ]);
+        // Process cattle data
+        if (cattleResponse.success && cattleResponse.data?.content) {
+          const cattleList = cattleResponse.data.content.map((c: Cattle) => ({
+            id: c.id!,
+            name: `${c.uniqueAnimalId} - ${c.name}`
+          }));
+          setCattle(cattleList);
+        }
 
-    setInventory([
-      { id: 1, name: 'Green Fodder' },
-      { id: 2, name: 'Dry Fodder' },
-      { id: 3, name: 'Concentrate Feed' },
-      { id: 4, name: 'Mineral Mixture' },
-      { id: 5, name: 'Water' }
-    ]);
+        // Process sheds data
+        if (shedsResponse.success && shedsResponse.data?.content) {
+          const shedsList = shedsResponse.data.content.map((s: Shed) => ({
+            id: s.id!,
+            name: `${s.shedNumber} - ${s.shedName}`
+          }));
+          setSheds(shedsList);
+        }
+
+        // Process inventory data - Filter only food-related types
+        if (inventoryResponse.success && inventoryResponse.data?.content) {
+          // Food-related inventory type names
+          const foodTypes = ['Ready food', 'Unprocessed Food', 'straw', 'Dry grass', 'crop'];
+
+          const inventoryList = inventoryResponse.data.content
+            .filter((i: Inventory) => {
+              // Check if inventory has a type name and if it's a food type
+              const typeName = (i as any).inventoryTypeName;
+              return typeName && foodTypes.some(ft => ft.toLowerCase() === typeName.toLowerCase());
+            })
+            .map((i: Inventory) => ({
+              id: i.id!,
+              name: `${i.itemName} (${(i as any).inventoryTypeName || ''})`
+            }));
+          setInventory(inventoryList);
+        }
+      } catch (error) {
+        console.error('Error fetching dropdown data:', error);
+        setMessage({
+          type: 'error',
+          text: 'Failed to load dropdown data. Please refresh the page.'
+        });
+      } finally {
+        setDataLoading(false);
+      }
+    };
+
+    fetchDropdownData();
   }, []);
 
   const handleInputChange = (field: keyof FoodHistoryFormData, value: string | number) => {
@@ -144,6 +189,117 @@ export default function AddFoodHistory() {
 
   const handleCancel = () => {
     navigate('/gaushala/food-history');
+  };
+
+  // Searchable Select Field Component
+  const SearchableSelectField = ({
+    label,
+    value,
+    onChange,
+    placeholder,
+    required = false,
+    error,
+    options,
+    className = ''
+  }: any) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [searchTerm, setSearchTerm] = useState('');
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    // Get selected option name
+    const selectedOption = options.find((opt: any) => opt.id === value);
+    const displayValue = selectedOption ? selectedOption.name : placeholder;
+
+    // Filter options based on search term
+    const filteredOptions = options.filter((option: any) =>
+      option.name.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    // Close dropdown when clicking outside
+    useEffect(() => {
+      const handleClickOutside = (event: MouseEvent) => {
+        if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+          setIsOpen(false);
+          setSearchTerm('');
+        }
+      };
+
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    return (
+      <div className={`space-y-2 ${className}`} ref={dropdownRef}>
+        <label className="block text-sm font-medium text-gray-800">
+          {label} {required && <span className="text-red-500">*</span>}
+        </label>
+        <div className="relative">
+          {/* Selected Value Display */}
+          <button
+            type="button"
+            onClick={() => setIsOpen(!isOpen)}
+            className={`w-full px-3 py-2 bg-white border rounded-lg transition-all duration-200 text-left flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent hover:border-gray-400 ${
+              error ? 'border-red-300 bg-red-50' : 'border-gray-300'
+            } ${!selectedOption ? 'text-gray-400' : 'text-gray-900'}`}
+          >
+            <span className="truncate">{displayValue}</span>
+            <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${isOpen ? 'transform rotate-180' : ''}`} />
+          </button>
+
+          {/* Dropdown Menu */}
+          {isOpen && (
+            <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-80 overflow-hidden">
+              {/* Search Input */}
+              <div className="p-2 border-b border-gray-200 sticky top-0 bg-white">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <input
+                    type="text"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Search..."
+                    className="w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </div>
+              </div>
+
+              {/* Options List */}
+              <div className="max-h-60 overflow-y-auto">
+                {filteredOptions.length === 0 ? (
+                  <div className="px-3 py-8 text-center text-sm text-gray-500">
+                    No options found
+                  </div>
+                ) : (
+                  filteredOptions.map((option: any) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => {
+                        onChange(option.id);
+                        setIsOpen(false);
+                        setSearchTerm('');
+                      }}
+                      className={`w-full px-3 py-2 text-left hover:bg-blue-50 transition-colors ${
+                        option.id === value ? 'bg-blue-100 text-blue-900 font-medium' : 'text-gray-900'
+                      }`}
+                    >
+                      {option.name}
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+        {error && (
+          <div className="flex items-center gap-2 text-sm text-red-600">
+            <span className="text-red-500">⚠</span>
+            {error}
+          </div>
+        )}
+      </div>
+    );
   };
 
   const SelectField = ({
@@ -249,6 +405,15 @@ export default function AddFoodHistory() {
     </div>
   );
 
+  // Show loading state while fetching dropdown data
+  if (dataLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-64">
+        <div className="text-gray-500">Loading form data...</div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
         {/* Header */}
@@ -297,12 +462,12 @@ export default function AddFoodHistory() {
 
           <form onSubmit={handleSubmit} className="p-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Livestock */}
-              <SelectField
+              {/* Livestock - Searchable */}
+              <SearchableSelectField
                 label="Livestock (Cattle)"
                 value={formData.livestockId}
                 onChange={(value: number) => handleInputChange('livestockId', value)}
-                placeholder="Select cattle"
+                placeholder="Search and select cattle"
                 required
                 error={errors.livestockId}
                 options={cattle}

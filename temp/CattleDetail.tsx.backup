@@ -1,0 +1,466 @@
+/**
+ * Cattle Detail Page - Display ALL fields from API
+ * Shows every available field from the Cattle interface
+ */
+
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import {
+  Edit,
+  ArrowLeft,
+  Activity,
+  Heart,
+  Camera,
+  AlertTriangle,
+  User,
+  Home as HomeIcon,
+  Ruler,
+  Baby,
+  Globe,
+  Calendar,
+  FileText,
+  Pill,
+  Milk
+} from 'lucide-react';
+import {
+  gauShalaApi,
+  type Cattle,
+  type Breed,
+  type Species,
+  type Gender,
+  type Color,
+  calculateAgeFromDob
+} from '../../services/gaushala/api';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+
+interface LanguageContextType {
+  language: 'hi' | 'en';
+  t: (key: string) => string;
+}
+
+interface CattleDetailProps {
+  languageContext: LanguageContextType;
+}
+
+export default function CattleDetail({ languageContext }: CattleDetailProps) {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+
+  const [cattle, setCattle] = useState<Cattle | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Master data states
+  const [breeds, setBreeds] = useState<Breed[]>([]);
+  const [species, setSpecies] = useState<Species[]>([]);
+  const [genders, setGenders] = useState<Gender[]>([]);
+  const [colors, setColors] = useState<Color[]>([]);
+
+  useEffect(() => {
+    if (id) {
+      loadCattleDetail();
+    }
+    loadMasterData();
+  }, [id]);
+
+  const loadMasterData = async () => {
+    try {
+      const [breedsRes, speciesRes, gendersRes, colorsRes] = await Promise.all([
+        gauShalaApi.masterData.getAllBreeds(),
+        gauShalaApi.masterData.getAllSpecies(),
+        gauShalaApi.masterData.getAllGenders(),
+        gauShalaApi.masterData.getAllColors(),
+      ]);
+
+      if (breedsRes.success && breedsRes.data) setBreeds(breedsRes.data);
+      if (speciesRes.success && speciesRes.data) setSpecies(speciesRes.data);
+      if (gendersRes.success && gendersRes.data) setGenders(gendersRes.data);
+      if (colorsRes.success && colorsRes.data) setColors(colorsRes.data);
+    } catch (err) {
+      console.error('Failed to load master data:', err);
+    }
+  };
+
+  const loadCattleDetail = async () => {
+    if (!id) return;
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const cattleId = parseInt(id);
+      const response = await gauShalaApi.cattle.getCattleById(cattleId);
+
+      if (response.success && response.data) {
+        console.log('Cattle data received:', response.data); // Debug log
+        setCattle(response.data);
+      } else {
+        setError('Cattle not found');
+      }
+    } catch (err) {
+      console.error('Failed to load cattle:', err);
+      setError('Failed to load cattle details');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleBack = () => {
+    navigate(-1);
+  };
+
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return '-';
+    try {
+      return new Date(dateString).toLocaleDateString();
+    } catch {
+      return '-';
+    }
+  };
+
+  const getVaccinationStatusColor = (status?: string) => {
+    if (!status) return 'bg-gray-100 text-gray-800';
+    if (status.toLowerCase().includes('complete')) return 'bg-green-100 text-green-800';
+    if (status.toLowerCase().includes('pending')) return 'bg-yellow-100 text-yellow-800';
+    return 'bg-blue-100 text-blue-800';
+  };
+
+  // Helper functions to resolve IDs to names
+  const getBreedName = (breedId?: number): string => {
+    if (!breedId) return '-';
+    const breed = breeds.find(b => b.id === breedId);
+    return breed ? breed.name : `Breed ID: ${breedId}`;
+  };
+
+  const getSpeciesName = (speciesId?: number): string => {
+    if (!speciesId) return '-';
+    const sp = species.find(s => s.id === speciesId);
+    return sp ? sp.name : `Species ID: ${speciesId}`;
+  };
+
+  const getGenderName = (genderId?: number): string => {
+    if (!genderId) return '-';
+    const gender = genders.find(g => g.id === genderId);
+    return gender ? gender.name : `Gender ID: ${genderId}`;
+  };
+
+  const getColorName = (colorId?: number): string => {
+    if (!colorId) return '-';
+    const color = colors.find(c => c.id === colorId);
+    return color ? color.name : `Color ID: ${colorId}`;
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading cattle details...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !cattle) {
+    return (
+      <div className="p-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="h-5 w-5 text-red-600" />
+            <p className="text-red-800">{error || 'Cattle not found'}</p>
+          </div>
+        </div>
+        <Button variant="ghost" onClick={handleBack} className="mt-4">
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Go Back
+        </Button>
+      </div>
+    );
+  }
+
+  const age = cattle.dob ? calculateAgeFromDob(cattle.dob) : null;
+
+  return (
+    <div className="p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" onClick={handleBack} className="flex items-center gap-2">
+            <ArrowLeft className="h-5 w-5" />
+            <span className="font-medium">Back</span>
+          </Button>
+
+          <div className="h-8 w-px bg-gray-300"></div>
+
+          <div className="flex items-center gap-3">
+            <div className="h-12 w-12 bg-blue-100 rounded-full flex items-center justify-center">
+              <span className="text-2xl">🐄</span>
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">
+                {cattle.name || cattle.uniqueAnimalId}
+              </h2>
+              <p className="text-gray-600">ID: {cattle.uniqueAnimalId}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex gap-3">
+          <Button variant="outline" onClick={() => navigate(`/gaushala/cattle/edit/${id}`)}>
+            <Edit className="mr-2 h-4 w-4" />
+            Edit
+          </Button>
+        </div>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600 mb-1">Age</p>
+              <p className="text-2xl font-bold text-gray-900">
+                {age !== null ? `${age} yrs` : '-'}
+              </p>
+            </div>
+            <Calendar className="h-8 w-8 text-blue-500" />
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600 mb-1">Weight</p>
+              <p className="text-2xl font-bold text-gray-900">
+                {cattle.weight ? `${cattle.weight} kg` : '-'}
+              </p>
+            </div>
+            <Ruler className="h-8 w-8 text-green-500" />
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600 mb-1">Milk Yield</p>
+              <p className="text-2xl font-bold text-gray-900">
+                {cattle.milkYieldPerDay ? `${cattle.milkYieldPerDay} L/day` : '-'}
+              </p>
+            </div>
+            <Milk className="h-8 w-8 text-purple-500" />
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600 mb-1">Vaccination</p>
+              <Badge className={getVaccinationStatusColor(cattle.vaccinationStatus)}>
+                {cattle.vaccinationStatus || 'Unknown'}
+              </Badge>
+            </div>
+            <Heart className="h-8 w-8 text-red-500" />
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left Column - Main Info */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Core Identity */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <User className="h-5 w-5 text-blue-600" />
+              Core Identity
+            </h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div><label className="block text-sm font-medium text-gray-500 mb-1">ID</label><p className="text-gray-900">{cattle.id || '-'}</p></div>
+              <div><label className="block text-sm font-medium text-gray-500 mb-1">Unique Animal ID</label><p className="text-gray-900 font-medium">{cattle.uniqueAnimalId}</p></div>
+              <div><label className="block text-sm font-medium text-gray-500 mb-1">Name</label><p className="text-gray-900">{cattle.name || '-'}</p></div>
+              <div><label className="block text-sm font-medium text-gray-500 mb-1">Gaushala ID</label><p className="text-gray-900">{cattle.gaushalaId}</p></div>
+            </div>
+          </div>
+
+          {/* Classification */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <FileText className="h-5 w-5 text-purple-600" />
+              Classification
+            </h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div><label className="block text-sm font-medium text-gray-500 mb-1">Breed</label><p className="text-gray-900">{getBreedName(cattle.breedId)}</p></div>
+              <div><label className="block text-sm font-medium text-gray-500 mb-1">Species</label><p className="text-gray-900">{getSpeciesName(cattle.speciesId)}</p></div>
+              <div><label className="block text-sm font-medium text-gray-500 mb-1">Gender</label><p className="text-gray-900">{getGenderName(cattle.genderId)}</p></div>
+              <div><label className="block text-sm font-medium text-gray-500 mb-1">Color</label><p className="text-gray-900">{getColorName(cattle.colorId)}</p></div>
+            </div>
+          </div>
+
+          {/* Physical Attributes */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <Ruler className="h-5 w-5 text-green-600" />
+              Physical Attributes
+            </h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div><label className="block text-sm font-medium text-gray-500 mb-1">Date of Birth</label><p className="text-gray-900">{formatDate(cattle.dob)}</p></div>
+              <div><label className="block text-sm font-medium text-gray-500 mb-1">Weight</label><p className="text-gray-900">{cattle.weight ? `${cattle.weight} kg` : '-'}</p></div>
+              <div><label className="block text-sm font-medium text-gray-500 mb-1">Height</label><p className="text-gray-900">{cattle.height ? `${cattle.height} cm` : '-'}</p></div>
+              <div><label className="block text-sm font-medium text-gray-500 mb-1">Horn Status</label><p className="text-gray-900 capitalize">{cattle.hornStatus || '-'}</p></div>
+              <div className="col-span-2"><label className="block text-sm font-medium text-gray-500 mb-1">Disability</label><p className="text-gray-900">{cattle.disability || '-'}</p></div>
+            </div>
+          </div>
+
+          {/* Identification Tags */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <FileText className="h-5 w-5 text-orange-600" />
+              Identification Tags
+            </h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div><label className="block text-sm font-medium text-gray-500 mb-1">Ear Tag No</label><p className="text-gray-900 font-mono">{cattle.earTagNo || '-'}</p></div>
+              <div><label className="block text-sm font-medium text-gray-500 mb-1">RFID Tag No</label><p className="text-gray-900 font-mono">{cattle.rfidTagNo || '-'}</p></div>
+              <div className="col-span-2"><label className="block text-sm font-medium text-gray-500 mb-1">Microchip No</label><p className="text-gray-900 font-mono">{cattle.microchipNo || '-'}</p></div>
+            </div>
+          </div>
+
+          {/* Health Management */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <Heart className="h-5 w-5 text-red-600" />
+              Health Management
+            </h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div><label className="block text-sm font-medium text-gray-500 mb-1">Vaccination Status</label><Badge className={getVaccinationStatusColor(cattle.vaccinationStatus)}>{cattle.vaccinationStatus || 'Unknown'}</Badge></div>
+              <div><label className="block text-sm font-medium text-gray-500 mb-1">Deworming Schedule</label><p className="text-gray-900">{cattle.dewormingSchedule || '-'}</p></div>
+              <div><label className="block text-sm font-medium text-gray-500 mb-1">Last Health Checkup</label><p className="text-gray-900">{formatDate(cattle.lastHealthCheckupDate)}</p></div>
+              <div><label className="block text-sm font-medium text-gray-500 mb-1">Vet Name</label><p className="text-gray-900">{cattle.vetName || '-'}</p></div>
+              <div className="col-span-2"><label className="block text-sm font-medium text-gray-500 mb-1">Vet Contact</label><p className="text-gray-900">{cattle.vetContact || '-'}</p></div>
+              {cattle.medicalHistory && (
+                <div className="col-span-2"><label className="block text-sm font-medium text-gray-500 mb-1">Medical History</label><p className="text-gray-900 text-sm">{cattle.medicalHistory}</p></div>
+              )}
+            </div>
+          </div>
+
+          {/* Milk Production (if applicable) */}
+          {(cattle.milkingStatus || cattle.milkYieldPerDay) && (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <Milk className="h-5 w-5 text-pink-600" />
+                Milk Production
+              </h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div><label className="block text-sm font-medium text-gray-500 mb-1">Milking Status</label><p className="text-gray-900 capitalize">{cattle.milkingStatus || '-'}</p></div>
+                <div><label className="block text-sm font-medium text-gray-500 mb-1">Lactation Number</label><p className="text-gray-900">{cattle.lactationNumber || '-'}</p></div>
+                <div><label className="block text-sm font-medium text-gray-500 mb-1">Milk Yield Per Day</label><p className="text-gray-900">{cattle.milkYieldPerDay ? `${cattle.milkYieldPerDay} liters` : '-'}</p></div>
+                <div><label className="block text-sm font-medium text-gray-500 mb-1">Last Calving Date</label><p className="text-gray-900">{formatDate(cattle.lastCalvingDate)}</p></div>
+                <div><label className="block text-sm font-medium text-gray-500 mb-1">Calves Count</label><p className="text-gray-900">{cattle.calvesCount || 0}</p></div>
+                <div><label className="block text-sm font-medium text-gray-500 mb-1">Pregnancy Status</label><p className="text-gray-900 capitalize">{cattle.pregnancyStatus || '-'}</p></div>
+              </div>
+            </div>
+          )}
+
+          {/* Acquisition Details */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <Globe className="h-5 w-5 text-indigo-600" />
+              Acquisition & Ownership
+            </h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div><label className="block text-sm font-medium text-gray-500 mb-1">Source ID</label><p className="text-gray-900">{cattle.sourceId || '-'}</p></div>
+              <div><label className="block text-sm font-medium text-gray-500 mb-1">Date of Acquisition</label><p className="text-gray-900">{formatDate(cattle.dateOfAcquisition)}</p></div>
+              <div><label className="block text-sm font-medium text-gray-500 mb-1">Previous Owner</label><p className="text-gray-900">{cattle.previousOwner || '-'}</p></div>
+              <div><label className="block text-sm font-medium text-gray-500 mb-1">Ownership ID</label><p className="text-gray-900">{cattle.ownershipId || '-'}</p></div>
+              <div className="col-span-2"><label className="block text-sm font-medium text-gray-500 mb-1">Date of Entry</label><p className="text-gray-900">{formatDate(cattle.dateOfEntry)}</p></div>
+            </div>
+          </div>
+
+          {/* Housing & Feeding */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <HomeIcon className="h-5 w-5 text-amber-600" />
+              Housing & Feeding
+            </h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div><label className="block text-sm font-medium text-gray-500 mb-1">Shed Number</label><p className="text-gray-900">{cattle.shedNumber || '-'}</p></div>
+              <div><label className="block text-sm font-medium text-gray-500 mb-1">Feed Type ID</label><p className="text-gray-900">{cattle.feedTypeId || '-'}</p></div>
+              <div className="col-span-2"><label className="block text-sm font-medium text-gray-500 mb-1">Feeding Schedule</label><p className="text-gray-900 text-sm">{cattle.feedingSchedule || '-'}</p></div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column - Sidebar */}
+        <div className="space-y-6">
+          {/* Photo */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <Camera className="h-5 w-5 text-blue-600" />
+              Photo
+            </h3>
+            <div className="text-center">
+              {cattle.photoPath || cattle.photoUrl ? (
+                <img
+                  src={cattle.photoPath || cattle.photoUrl}
+                  alt={cattle.name || cattle.uniqueAnimalId}
+                  className="w-full h-48 object-cover rounded-lg mb-4"
+                />
+              ) : (
+                <div className="w-full h-48 bg-gray-100 rounded-lg flex items-center justify-center mb-4">
+                  <span className="text-6xl">🐄</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Document Paths */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <FileText className="h-5 w-5 text-gray-600" />
+              Documents
+            </h3>
+            <div className="space-y-3">
+              <div><label className="block text-sm font-medium text-gray-500 mb-1">Photo Path</label><p className="text-gray-900 text-xs break-all">{cattle.photoPath || '-'}</p></div>
+              <div><label className="block text-sm font-medium text-gray-500 mb-1">Vaccination Doc</label><p className="text-gray-900 text-xs break-all">{cattle.vaccinationDocPath || '-'}</p></div>
+              <div><label className="block text-sm font-medium text-gray-500 mb-1">Health Certificate</label><p className="text-gray-900 text-xs break-all">{cattle.healthCertificatePath || '-'}</p></div>
+              <div><label className="block text-sm font-medium text-gray-500 mb-1">Purchase Doc</label><p className="text-gray-900 text-xs break-all">{cattle.purchaseDocPath || '-'}</p></div>
+            </div>
+          </div>
+
+          {/* Timestamps */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <Calendar className="h-5 w-5 text-teal-600" />
+              Timestamps
+            </h3>
+            <div className="space-y-3">
+              <div><label className="block text-sm font-medium text-gray-500 mb-1">Created At</label><p className="text-gray-900 text-sm">{formatDate(cattle.createdAt)}</p></div>
+              <div><label className="block text-sm font-medium text-gray-500 mb-1">Updated At</label><p className="text-gray-900 text-sm">{formatDate(cattle.updatedAt)}</p></div>
+            </div>
+          </div>
+
+          {/* Legacy Fields (if available) */}
+          {(cattle.isActive !== undefined || cattle.totalDungCollected !== undefined || cattle.lastDungCollection !== undefined) && (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <Activity className="h-5 w-5 text-emerald-600" />
+                Additional Info
+              </h3>
+              <div className="space-y-3">
+                {cattle.isActive !== undefined && (
+                  <div><label className="block text-sm font-medium text-gray-500 mb-1">Active Status</label><Badge className={cattle.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>{cattle.isActive ? 'Active' : 'Inactive'}</Badge></div>
+                )}
+                {cattle.totalDungCollected !== undefined && (
+                  <div><label className="block text-sm font-medium text-gray-500 mb-1">Total Dung Collected</label><p className="text-gray-900">{cattle.totalDungCollected} kg</p></div>
+                )}
+                {cattle.lastDungCollection !== undefined && (
+                  <div><label className="block text-sm font-medium text-gray-500 mb-1">Last Dung Collection</label><p className="text-gray-900">{cattle.lastDungCollection}</p></div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

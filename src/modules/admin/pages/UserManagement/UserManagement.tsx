@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Search, Plus, Edit, Trash2, Shield, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Users, Search, Plus, Edit, Trash2, Shield, ToggleLeft, ToggleRight, Key } from 'lucide-react';
 import { userManagementService, UserProfile, PaginatedUsersResponse } from '@/services/admin/user-management.service';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
+import AddUserDialog from '@/modules/admin/components/AddUserDialog';
+import EditUserDialog from '@/modules/admin/components/EditUserDialog';
+import ResetPasswordDialog from '@/modules/admin/components/ResetPasswordDialog';
 
 const UserManagement: React.FC = () => {
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -14,6 +17,10 @@ const UserManagement: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [totalElements, setTotalElements] = useState(0);
+  const [addUserDialogOpen, setAddUserDialogOpen] = useState(false);
+  const [editUserDialogOpen, setEditUserDialogOpen] = useState(false);
+  const [resetPasswordDialogOpen, setResetPasswordDialogOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const pageSize = 10;
 
   useEffect(() => {
@@ -75,6 +82,16 @@ const UserManagement: React.FC = () => {
     setCurrentPage(0); // Reset to first page on new search
   };
 
+  const handleEditUser = (user: UserProfile) => {
+    setSelectedUser(user);
+    setEditUserDialogOpen(true);
+  };
+
+  const handleResetPassword = (user: UserProfile) => {
+    setSelectedUser(user);
+    setResetPasswordDialogOpen(true);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -85,7 +102,7 @@ const UserManagement: React.FC = () => {
             Manage users, roles, and permissions across the platform
           </p>
         </div>
-        <Button className="gap-2">
+        <Button className="gap-2" onClick={() => setAddUserDialogOpen(true)}>
           <Plus className="h-4 w-4" />
           Add User
         </Button>
@@ -221,9 +238,19 @@ const UserManagement: React.FC = () => {
                           <Button
                             variant="ghost"
                             size="icon"
+                            onClick={() => handleEditUser(user)}
                             title="Edit User"
                           >
                             <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleResetPassword(user)}
+                            title="Reset Password"
+                            className="text-orange-600 hover:text-orange-700"
+                          >
+                            <Key className="h-4 w-4" />
                           </Button>
                           <Button
                             variant="ghost"
@@ -272,6 +299,31 @@ const UserManagement: React.FC = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Add User Dialog */}
+      <AddUserDialog
+        open={addUserDialogOpen}
+        onOpenChange={setAddUserDialogOpen}
+        onUserAdded={() => {
+          fetchUsers();
+          setCurrentPage(0);
+        }}
+      />
+
+      {/* Edit User Dialog */}
+      <EditUserDialog
+        open={editUserDialogOpen}
+        onOpenChange={setEditUserDialogOpen}
+        onUserUpdated={fetchUsers}
+        user={selectedUser}
+      />
+
+      {/* Reset Password Dialog */}
+      <ResetPasswordDialog
+        open={resetPasswordDialogOpen}
+        onOpenChange={setResetPasswordDialogOpen}
+        user={selectedUser}
+      />
     </div>
   );
 };

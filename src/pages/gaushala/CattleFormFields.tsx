@@ -17,8 +17,8 @@ export const InputField = ({
   ...props
 }: any) => (
   <div className={`space-y-2 ${className}`}>
-    <label className="block text-sm font-medium text-gray-800">
-      {label} {required && <span className="text-red-500">*</span>}
+    <label className="block text-sm font-bold text-gray-900 tracking-wide uppercase text-[11px] mb-1">
+      {label} {required && <span className="text-red-600 font-extrabold">*</span>}
     </label>
     <input
       type={type}
@@ -50,8 +50,8 @@ export const SelectField = ({
   className = ''
 }: any) => (
   <div className={`space-y-2 ${className}`}>
-    <label className="block text-sm font-medium text-gray-800">
-      {label} {required && <span className="text-red-500">*</span>}
+    <label className="block text-sm font-bold text-gray-900 tracking-wide uppercase text-[11px] mb-1">
+      {label} {required && <span className="text-red-600 font-extrabold">*</span>}
     </label>
     <select
       value={value}
@@ -85,7 +85,7 @@ export const TextAreaField = ({
   className = ''
 }: any) => (
   <div className={`space-y-2 ${className}`}>
-    <label className="block text-sm font-medium text-gray-800">
+    <label className="block text-sm font-bold text-gray-900 tracking-wide uppercase text-[11px] mb-1">
       {label}
     </label>
     <textarea
@@ -106,7 +106,7 @@ export const FileUploadField = ({
   className = ''
 }: any) => (
   <div className={`space-y-2 ${className}`}>
-    <label className="block text-sm font-medium text-gray-800">
+    <label className="block text-sm font-bold text-gray-900 tracking-wide uppercase text-[11px] mb-1">
       {label}
     </label>
     <div className="relative">

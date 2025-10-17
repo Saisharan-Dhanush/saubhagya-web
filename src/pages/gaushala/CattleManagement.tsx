@@ -27,7 +27,18 @@ import {
   History,
   Clock,
   LogIn,
-  LogOut
+  LogOut,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  Settings,
+  Columns,
+  Eye as EyeIcon,
+  EyeOff,
+  MapPinned,
+  Tag,
+  Cpu,
+  Palette
 } from 'lucide-react';
 import {
   cattleApi,
@@ -120,12 +131,40 @@ interface CattleFilter {
   gaushalaId?: string;
 }
 
+interface SortConfig {
+  column: string;
+  direction: 'asc' | 'desc';
+}
+
+type SortableColumn =
+  | 'name'
+  | 'rfidTag'
+  | 'breed'
+  | 'species'
+  | 'gender'
+  | 'age'
+  | 'weight'
+  | 'health'
+  | 'status'
+  | 'color'
+  | 'location'
+  | 'earTag'
+  | 'microchip'
+  | 'createdDate';
+
+interface ColumnConfig {
+  key: SortableColumn;
+  label: string;
+  visible: boolean;
+  order: number;
+}
+
 const translations = {
   en: {
     title: 'Cattle Management',
     subtitle: 'Manage cattle records with RFID tracking',
     addCattle: 'Add Cattle',
-    searchPlaceholder: 'Search by name, RFID, or owner...',
+    searchPlaceholder: 'Search: "gir female" or "breed:jersey" or "rfid:RF123"',
     filterBy: 'Filter',
     allHealth: 'All Health',
     healthy: 'Healthy',
@@ -205,7 +244,7 @@ const translations = {
     title: 'पशु प्रबंधन',
     subtitle: 'RFID ट्रैकिंग के साथ पशु रिकॉर्ड प्रबंधन',
     addCattle: 'पशु जोड़ें',
-    searchPlaceholder: 'नाम, RFID, या मालिक से खोजें...',
+    searchPlaceholder: 'खोजें: "गिर female" या "breed:jersey" या "rfid:RF123"',
     filterBy: 'फ़िल्टर',
     allHealth: 'सभी स्वास्थ्य',
     healthy: 'स्वस्थ',
@@ -330,6 +369,55 @@ export default function CattleManagement({ languageContext }: Props) {
     gaushalaId: undefined
   });
 
+  // Sort state - supports multiple column sorting
+  const [sortConfig, setSortConfig] = useState<SortConfig[]>([]);
+
+  // Column visibility state
+  const [showColumnSelector, setShowColumnSelector] = useState(false);
+  const [draggedColumn, setDraggedColumn] = useState<SortableColumn | null>(null);
+  const [dragOverColumn, setDragOverColumn] = useState<SortableColumn | null>(null);
+  const [columns, setColumns] = useState<ColumnConfig[]>(() => {
+    // Default columns configuration - 14 total columns
+    const defaultColumns: ColumnConfig[] = [
+      { key: 'name', label: 'Name', visible: true, order: 0 },
+      { key: 'rfidTag', label: 'RFID Tag', visible: true, order: 1 },
+      { key: 'breed', label: 'Breed', visible: true, order: 2 },
+      { key: 'species', label: 'Species', visible: false, order: 3 },
+      { key: 'gender', label: 'Gender', visible: true, order: 4 },
+      { key: 'age', label: 'Age', visible: true, order: 5 },
+      { key: 'weight', label: 'Weight', visible: true, order: 6 },
+      { key: 'health', label: 'Health', visible: true, order: 7 },
+      { key: 'status', label: 'Status', visible: true, order: 8 },
+      { key: 'color', label: 'Color', visible: false, order: 9 },
+      { key: 'location', label: 'Location', visible: false, order: 10 },
+      { key: 'earTag', label: 'Ear Tag', visible: false, order: 11 },
+      { key: 'microchip', label: 'Microchip', visible: false, order: 12 },
+      { key: 'createdDate', label: 'Created Date', visible: false, order: 13 },
+    ];
+
+    // Try to load from localStorage first
+    const saved = localStorage.getItem('cattleTableColumns');
+    const savedVersion = localStorage.getItem('cattleTableColumnsVersion');
+    const CURRENT_VERSION = '2.0'; // Increment when adding new columns
+
+    if (saved && savedVersion === CURRENT_VERSION) {
+      try {
+        const parsed = JSON.parse(saved);
+        // Verify all 14 columns exist
+        if (parsed.length === 14) {
+          return parsed;
+        }
+      } catch (e) {
+        console.error('Failed to parse saved columns:', e);
+      }
+    }
+
+    // If no saved data or version mismatch, use defaults and save them
+    localStorage.setItem('cattleTableColumns', JSON.stringify(defaultColumns));
+    localStorage.setItem('cattleTableColumnsVersion', CURRENT_VERSION);
+    return defaultColumns;
+  });
+
   const t = (key: string): string => {
     return translations[language][key as keyof typeof translations['en']] || key;
   };
@@ -344,6 +432,19 @@ export default function CattleManagement({ languageContext }: Props) {
   useEffect(() => {
     applyFilters();
   }, [cattle, filter]);
+
+  // Close column selector when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (showColumnSelector && !target.closest('.column-selector-container')) {
+        setShowColumnSelector(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showColumnSelector]);
 
   /**
    * Load all cattle from Gaushala Service
@@ -430,21 +531,144 @@ export default function CattleManagement({ languageContext }: Props) {
   };
 
   /**
-   * Apply all active filters to cattle list
-   * Works with new Cattle interface using IDs for breeds, species, etc.
+   * Calculate search relevance score for ranking results
+   */
+  const calculateRelevanceScore = (cattle: Cattle, searchTerms: string[]): number => {
+    let score = 0;
+    const lowerName = cattle.name.toLowerCase();
+    const lowerUniqueId = cattle.uniqueAnimalId.toLowerCase();
+    const lowerRfid = cattle.rfidTagNo?.toLowerCase() || '';
+
+    searchTerms.forEach(term => {
+      // Exact matches get highest score
+      if (lowerName === term) score += 100;
+      if (lowerUniqueId === term) score += 100;
+      if (lowerRfid === term) score += 100;
+
+      // Starts with match gets high score
+      if (lowerName.startsWith(term)) score += 50;
+      if (lowerUniqueId.startsWith(term)) score += 50;
+      if (lowerRfid.startsWith(term)) score += 50;
+
+      // Contains match gets medium score
+      if (lowerName.includes(term)) score += 25;
+      if (lowerUniqueId.includes(term)) score += 25;
+      if (lowerRfid.includes(term)) score += 25;
+
+      // Master data matches get lower score
+      if (getBreedName(cattle.breedId).toLowerCase().includes(term)) score += 20;
+      if (getSpeciesName(cattle.speciesId).toLowerCase().includes(term)) score += 20;
+      if (getGenderName(cattle.genderId).toLowerCase().includes(term)) score += 15;
+      if (getColorName(cattle.colorId).toLowerCase().includes(term)) score += 15;
+
+      // Tag matches
+      if (cattle.earTagNo?.toLowerCase().includes(term)) score += 30;
+      if (cattle.microchipNo?.toLowerCase().includes(term)) score += 30;
+      if (cattle.shedNumber?.toLowerCase().includes(term)) score += 10;
+
+      // Numeric field matches
+      if (cattle.weight?.toString().includes(term)) score += 10;
+      if (calculateAgeFromDob(cattle.dob).toString().includes(term)) score += 10;
+
+      // Health status match
+      if (cattle.healthStatus?.toLowerCase().includes(term)) score += 15;
+    });
+
+    return score;
+  };
+
+  /**
+   * Advanced search and filter functionality with ranking
+   * Features: Multi-term search, fuzzy matching, relevance ranking, field-specific search
    */
   const applyFilters = () => {
     let filtered = [...cattle];
 
-    // Search filter - search by name, RFID tag, or unique animal ID
+    // Advanced search filter with multi-term support and ranking
     if (filter.search) {
-      const searchLower = filter.search.toLowerCase();
-      filtered = filtered.filter(c =>
-        c.name.toLowerCase().includes(searchLower) ||
-        (c.rfidTagNo && c.rfidTagNo.toLowerCase().includes(searchLower)) ||
-        c.uniqueAnimalId.toLowerCase().includes(searchLower) ||
-        getBreedName(c.breedId).toLowerCase().includes(searchLower)
-      );
+      const searchInput = filter.search.toLowerCase().trim();
+
+      // Split search into multiple terms (supports "gir female" searching for both)
+      const searchTerms = searchInput.split(/\s+/).filter(term => term.length > 0);
+
+      // Check for special search syntax (field:value)
+      const fieldSearchMatch = searchInput.match(/^(\w+):(.+)$/);
+
+      if (fieldSearchMatch) {
+        // Field-specific search (e.g., "breed:gir", "rfid:RF123")
+        const [, field, value] = fieldSearchMatch;
+        const valueLower = value.toLowerCase().trim();
+
+        filtered = filtered.filter(c => {
+          switch (field) {
+            case 'name':
+              return c.name.toLowerCase().includes(valueLower);
+            case 'id':
+              return c.uniqueAnimalId.toLowerCase().includes(valueLower);
+            case 'rfid':
+              return c.rfidTagNo?.toLowerCase().includes(valueLower);
+            case 'breed':
+              return getBreedName(c.breedId).toLowerCase().includes(valueLower);
+            case 'gender':
+              return getGenderName(c.genderId).toLowerCase().includes(valueLower);
+            case 'species':
+              return getSpeciesName(c.speciesId).toLowerCase().includes(valueLower);
+            case 'color':
+              return getColorName(c.colorId).toLowerCase().includes(valueLower);
+            case 'weight':
+              return c.weight?.toString().includes(valueLower);
+            case 'age':
+              return calculateAgeFromDob(c.dob).toString().includes(valueLower);
+            case 'health':
+              return c.healthStatus?.toLowerCase().includes(valueLower);
+            case 'shed':
+              return c.shedNumber?.toLowerCase().includes(valueLower);
+            case 'ear':
+            case 'eartag':
+              return c.earTagNo?.toLowerCase().includes(valueLower);
+            case 'chip':
+            case 'microchip':
+              return c.microchipNo?.toLowerCase().includes(valueLower);
+            default:
+              return false;
+          }
+        });
+      } else {
+        // Multi-term general search with relevance scoring
+        const resultsWithScore = filtered.map(c => ({
+          cattle: c,
+          score: calculateRelevanceScore(c, searchTerms),
+          matchCount: searchTerms.filter(term => {
+            const matches = [
+              c.name.toLowerCase().includes(term),
+              c.uniqueAnimalId.toLowerCase().includes(term),
+              c.rfidTagNo?.toLowerCase().includes(term),
+              getBreedName(c.breedId).toLowerCase().includes(term),
+              getSpeciesName(c.speciesId).toLowerCase().includes(term),
+              getGenderName(c.genderId).toLowerCase().includes(term),
+              getColorName(c.colorId).toLowerCase().includes(term),
+              c.earTagNo?.toLowerCase().includes(term),
+              c.microchipNo?.toLowerCase().includes(term),
+              c.weight?.toString().includes(term),
+              calculateAgeFromDob(c.dob).toString().includes(term),
+              c.healthStatus?.toLowerCase().includes(term),
+              c.shedNumber?.toLowerCase().includes(term)
+            ];
+            return matches.some(match => match);
+          }).length
+        }));
+
+        // Filter: must match at least one term
+        const matchedResults = resultsWithScore.filter(r => r.score > 0);
+
+        // Sort by relevance score (highest first) and match count
+        matchedResults.sort((a, b) => {
+          if (b.score !== a.score) return b.score - a.score;
+          return b.matchCount - a.matchCount;
+        });
+
+        filtered = matchedResults.map(r => r.cattle);
+      }
     }
 
     // Health status filter
@@ -469,6 +693,245 @@ export default function CattleManagement({ languageContext }: Props) {
     }
 
     setFilteredCattle(filtered);
+  };
+
+  /**
+   * Handle column sorting with multi-column support
+   * Click: Set single column sort (toggle asc/desc)
+   * Shift+Click: Add column to multi-column sort
+   */
+  const handleSort = (column: SortableColumn, shiftKey: boolean = false) => {
+    setSortConfig(prevConfig => {
+      if (shiftKey) {
+        // Multi-column sorting (Shift+Click)
+        const existingIndex = prevConfig.findIndex(s => s.column === column);
+
+        if (existingIndex >= 0) {
+          // Column already in sort - toggle direction or remove
+          const existing = prevConfig[existingIndex];
+          if (existing.direction === 'asc') {
+            // Change to desc
+            const newConfig = [...prevConfig];
+            newConfig[existingIndex] = { column, direction: 'desc' };
+            return newConfig;
+          } else {
+            // Remove this sort column
+            return prevConfig.filter((_, i) => i !== existingIndex);
+          }
+        } else {
+          // Add new column to sort (asc by default)
+          return [...prevConfig, { column, direction: 'asc' }];
+        }
+      } else {
+        // Single column sorting (regular click)
+        const existing = prevConfig.find(s => s.column === column);
+
+        if (existing) {
+          // Toggle direction or clear if already desc
+          if (existing.direction === 'asc') {
+            return [{ column, direction: 'desc' }];
+          } else {
+            return []; // Clear sort
+          }
+        } else {
+          // New sort column
+          return [{ column, direction: 'asc' }];
+        }
+      }
+    });
+  };
+
+  /**
+   * Get sort indicator for a column
+   */
+  const getSortIndicator = (column: SortableColumn) => {
+    const sortIndex = sortConfig.findIndex(s => s.column === column);
+
+    if (sortIndex === -1) {
+      return <ArrowUpDown className="h-3 w-3 text-gray-400" />;
+    }
+
+    const sort = sortConfig[sortIndex];
+    const isMulti = sortConfig.length > 1;
+
+    return (
+      <div className="flex items-center gap-1">
+        {sort.direction === 'asc' ? (
+          <ArrowUp className="h-3 w-3 text-blue-600" />
+        ) : (
+          <ArrowDown className="h-3 w-3 text-blue-600" />
+        )}
+        {isMulti && (
+          <span className="text-xs font-bold text-blue-600 bg-blue-100 rounded-full w-4 h-4 flex items-center justify-center">
+            {sortIndex + 1}
+          </span>
+        )}
+      </div>
+    );
+  };
+
+  /**
+   * Get visible columns sorted by order
+   */
+  const getVisibleColumns = (): ColumnConfig[] => {
+    return columns
+      .filter(col => col.visible)
+      .sort((a, b) => a.order - b.order);
+  };
+
+  /**
+   * Toggle column visibility
+   */
+  const toggleColumnVisibility = (key: SortableColumn) => {
+    const newColumns = columns.map(col =>
+      col.key === key ? { ...col, visible: !col.visible } : col
+    );
+    setColumns(newColumns);
+    localStorage.setItem('cattleTableColumns', JSON.stringify(newColumns));
+    localStorage.setItem('cattleTableColumnsVersion', '2.0');
+  };
+
+  /**
+   * Reset columns to default
+   */
+  const resetColumns = () => {
+    const defaultColumns: ColumnConfig[] = [
+      { key: 'name', label: 'Name', visible: true, order: 0 },
+      { key: 'rfidTag', label: 'RFID Tag', visible: true, order: 1 },
+      { key: 'breed', label: 'Breed', visible: true, order: 2 },
+      { key: 'species', label: 'Species', visible: false, order: 3 },
+      { key: 'gender', label: 'Gender', visible: true, order: 4 },
+      { key: 'age', label: 'Age', visible: true, order: 5 },
+      { key: 'weight', label: 'Weight', visible: true, order: 6 },
+      { key: 'health', label: 'Health', visible: true, order: 7 },
+      { key: 'status', label: 'Status', visible: true, order: 8 },
+      { key: 'color', label: 'Color', visible: false, order: 9 },
+      { key: 'location', label: 'Location', visible: false, order: 10 },
+      { key: 'earTag', label: 'Ear Tag', visible: false, order: 11 },
+      { key: 'microchip', label: 'Microchip', visible: false, order: 12 },
+      { key: 'createdDate', label: 'Created Date', visible: false, order: 13 },
+    ];
+    setColumns(defaultColumns);
+    localStorage.setItem('cattleTableColumns', JSON.stringify(defaultColumns));
+    localStorage.setItem('cattleTableColumnsVersion', '2.0');
+  };
+
+  /**
+   * Handle drag start for column reordering
+   */
+  const handleDragStart = (key: SortableColumn) => {
+    setDraggedColumn(key);
+  };
+
+  /**
+   * Handle drag over for column reordering
+   */
+  const handleDragOver = (e: React.DragEvent, key: SortableColumn) => {
+    e.preventDefault();
+    setDragOverColumn(key);
+  };
+
+  /**
+   * Handle drop for column reordering
+   */
+  const handleDrop = (targetKey: SortableColumn) => {
+    if (!draggedColumn || draggedColumn === targetKey) {
+      setDraggedColumn(null);
+      setDragOverColumn(null);
+      return;
+    }
+
+    const newColumns = [...columns];
+    const draggedIndex = newColumns.findIndex(col => col.key === draggedColumn);
+    const targetIndex = newColumns.findIndex(col => col.key === targetKey);
+
+    // Swap orders
+    const draggedCol = newColumns[draggedIndex];
+    const targetCol = newColumns[targetIndex];
+
+    const tempOrder = draggedCol.order;
+    draggedCol.order = targetCol.order;
+    targetCol.order = tempOrder;
+
+    setColumns(newColumns);
+    localStorage.setItem('cattleTableColumns', JSON.stringify(newColumns));
+    localStorage.setItem('cattleTableColumnsVersion', '2.0');
+    setDraggedColumn(null);
+    setDragOverColumn(null);
+  };
+
+  /**
+   * Handle drag end
+   */
+  const handleDragEnd = () => {
+    setDraggedColumn(null);
+    setDragOverColumn(null);
+  };
+
+  /**
+   * Apply sorting to filtered cattle
+   */
+  const applySorting = (cattleList: Cattle[]): Cattle[] => {
+    if (sortConfig.length === 0) return cattleList;
+
+    return [...cattleList].sort((a, b) => {
+      for (const { column, direction } of sortConfig) {
+        let compareResult = 0;
+
+        switch (column) {
+          case 'name':
+            compareResult = a.name.localeCompare(b.name);
+            break;
+          case 'rfidTag':
+            compareResult = (a.rfidTagNo || '').localeCompare(b.rfidTagNo || '');
+            break;
+          case 'breed':
+            compareResult = getBreedName(a.breedId).localeCompare(getBreedName(b.breedId));
+            break;
+          case 'gender':
+            compareResult = getGenderName(a.genderId).localeCompare(getGenderName(b.genderId));
+            break;
+          case 'age':
+            compareResult = calculateAgeFromDob(a.dob) - calculateAgeFromDob(b.dob);
+            break;
+          case 'weight':
+            compareResult = (a.weight || 0) - (b.weight || 0);
+            break;
+          case 'health':
+            compareResult = (a.healthStatus || '').localeCompare(b.healthStatus || '');
+            break;
+          case 'status':
+            compareResult = (a.isActive ? 1 : 0) - (b.isActive ? 1 : 0);
+            break;
+          case 'species':
+            compareResult = getSpeciesName(a.speciesId).localeCompare(getSpeciesName(b.speciesId));
+            break;
+          case 'color':
+            compareResult = getColorName(a.colorId).localeCompare(getColorName(b.colorId));
+            break;
+          case 'location':
+            compareResult = getGaushalaName(a.gaushalaId).localeCompare(getGaushalaName(b.gaushalaId));
+            break;
+          case 'earTag':
+            compareResult = (a.earTagNo || '').localeCompare(b.earTagNo || '');
+            break;
+          case 'microchip':
+            compareResult = (a.microchipNo || '').localeCompare(b.microchipNo || '');
+            break;
+          case 'createdDate':
+            const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+            compareResult = dateA - dateB;
+            break;
+        }
+
+        if (compareResult !== 0) {
+          return direction === 'asc' ? compareResult : -compareResult;
+        }
+      }
+
+      return 0;
+    });
   };
 
   const getHealthColor = (health: string) => {
@@ -760,6 +1223,140 @@ export default function CattleManagement({ languageContext }: Props) {
     return Math.ceil(getFilteredLogs().length / logsPerPage);
   };
 
+  /**
+   * Render cell content based on column key
+   */
+  const renderCellContent = (column: SortableColumn, cattle: Cattle) => {
+    switch (column) {
+      case 'name':
+        return (
+          <div className="flex items-center">
+            <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
+              {cattle.photoUrl ? (
+                <img src={cattle.photoUrl} alt={cattle.name} className="h-10 w-10 rounded-full object-cover" />
+              ) : (
+                <span className="text-2xl">🐄</span>
+              )}
+            </div>
+            <div className="ml-3">
+              <div className="text-sm font-medium text-gray-900">{cattle.name}</div>
+              <div className="text-sm text-gray-500">ID: {cattle.uniqueAnimalId}</div>
+            </div>
+          </div>
+        );
+
+      case 'rfidTag':
+        return (
+          <div className="flex items-center">
+            <Wifi className="h-4 w-4 text-blue-500 mr-2" />
+            <span className="text-sm font-mono text-gray-900">{cattle.rfidTagNo || 'No RFID'}</span>
+          </div>
+        );
+
+      case 'breed':
+        return <span className="text-sm text-gray-900">{getBreedName(cattle.breedId)}</span>;
+
+      case 'gender':
+        const genderName = getGenderName(cattle.genderId).toLowerCase();
+        if (genderName.includes('female') || genderName.includes('cow')) {
+          return (
+            <div className="flex items-center gap-2">
+              <div className="flex items-center justify-center w-6 h-6 rounded-full bg-pink-100">
+                <span className="text-sm">♀</span>
+              </div>
+              <span className="text-sm text-gray-900">{getGenderName(cattle.genderId)}</span>
+            </div>
+          );
+        } else if (genderName.includes('male') || genderName.includes('bull')) {
+          return (
+            <div className="flex items-center gap-2">
+              <div className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-100">
+                <span className="text-sm">♂</span>
+              </div>
+              <span className="text-sm text-gray-900">{getGenderName(cattle.genderId)}</span>
+            </div>
+          );
+        } else {
+          return <span className="text-sm text-gray-900">{getGenderName(cattle.genderId)}</span>;
+        }
+
+      case 'age':
+        return <span className="text-sm text-gray-900">{calculateAgeFromDob(cattle.dob)} {t('years')}</span>;
+
+      case 'weight':
+        return <span className="text-sm text-gray-900">{cattle.weight || 'N/A'} {cattle.weight ? t('kg') : ''}</span>;
+
+      case 'health':
+        return (
+          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getHealthColor(cattle.healthStatus || 'unknown')}`}>
+            {t(cattle.healthStatus || 'unknown')}
+          </span>
+        );
+
+      case 'status':
+        return (
+          <div className="flex items-center gap-2">
+            <div className={`w-2 h-2 rounded-full ${cattle.isActive ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${cattle.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}`}>
+              {cattle.isActive ? t('active') : t('inactive')}
+            </span>
+          </div>
+        );
+
+      case 'species':
+        return (
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-900">{getSpeciesName(cattle.speciesId)}</span>
+          </div>
+        );
+
+      case 'color':
+        return (
+          <div className="flex items-center gap-2">
+            <Palette className="h-4 w-4 text-purple-500" />
+            <span className="text-sm text-gray-900">{getColorName(cattle.colorId)}</span>
+          </div>
+        );
+
+      case 'location':
+        return (
+          <div className="flex items-center gap-2">
+            <MapPinned className="h-4 w-4 text-red-500" />
+            <span className="text-sm text-gray-900">{getGaushalaName(cattle.gaushalaId)}</span>
+          </div>
+        );
+
+      case 'earTag':
+        return (
+          <div className="flex items-center gap-2">
+            <Tag className="h-4 w-4 text-orange-500" />
+            <span className="text-sm font-mono text-gray-900">{cattle.earTagNo || 'N/A'}</span>
+          </div>
+        );
+
+      case 'microchip':
+        return (
+          <div className="flex items-center gap-2">
+            <Cpu className="h-4 w-4 text-teal-500" />
+            <span className="text-sm font-mono text-gray-900">{cattle.microchipNo || 'N/A'}</span>
+          </div>
+        );
+
+      case 'createdDate':
+        return (
+          <div className="flex items-center gap-2">
+            <Calendar className="h-4 w-4 text-indigo-500" />
+            <span className="text-sm text-gray-900">
+              {cattle.createdAt ? new Date(cattle.createdAt).toLocaleDateString() : 'N/A'}
+            </span>
+          </div>
+        );
+
+      default:
+        return null;
+    }
+  };
+
   const handleScanRFID = async () => {
     try {
       const response = await gauShalaApi.cattle.scanRfid();
@@ -818,8 +1415,17 @@ export default function CattleManagement({ languageContext }: Props) {
                 placeholder={t('searchPlaceholder')}
                 value={filter.search}
                 onChange={(e) => setFilter(prev => ({ ...prev, search: e.target.value }))}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
+              {filter.search && (
+                <button
+                  onClick={() => setFilter(prev => ({ ...prev, search: '' }))}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  title="Clear search"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
             </div>
           </div>
 
@@ -843,10 +1449,9 @@ export default function CattleManagement({ languageContext }: Props) {
             className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
           >
             <option value="">{t('allBreeds')}</option>
-            <option value="गिर">गिर</option>
-            <option value="सिंधी">सिंधी</option>
-            <option value="होल्स्टीन">होल्स्टीन</option>
-            <option value="जर्सी">जर्सी</option>
+            {breeds.map(breed => (
+              <option key={breed.id} value={breed.name}>{breed.name}</option>
+            ))}
           </select>
 
           {/* RFID Scan Button */}
@@ -858,7 +1463,105 @@ export default function CattleManagement({ languageContext }: Props) {
             {t('scanRFID')}
           </button>
         </div>
+
+        {/* Column Selector Button */}
+        <div className="mt-4 flex justify-end">
+          <div className="relative column-selector-container">
+            <button
+              onClick={() => setShowColumnSelector(!showColumnSelector)}
+              className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <Columns className="h-4 w-4" />
+              Manage Columns ({getVisibleColumns().length}/{columns.length})
+            </button>
+
+            {/* Column Selector Dropdown */}
+            {showColumnSelector && (
+              <div className="absolute right-0 mt-2 w-72 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+                <div className="p-4 border-b border-gray-200">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold text-gray-900">Column Visibility</h3>
+                    <button
+                      onClick={() => setShowColumnSelector(false)}
+                      className="text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">Toggle columns to show/hide</p>
+                </div>
+
+                <div className="p-2 max-h-96 overflow-y-auto">
+                  {columns.map((column) => (
+                    <label
+                      key={column.key}
+                      className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 rounded-lg cursor-pointer transition-colors"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={column.visible}
+                        onChange={() => toggleColumnVisibility(column.key)}
+                        className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-2 focus:ring-blue-500"
+                      />
+                      <div className="flex items-center gap-2 flex-1">
+                        {column.visible ? (
+                          <EyeIcon className="h-4 w-4 text-blue-600" />
+                        ) : (
+                          <EyeOff className="h-4 w-4 text-gray-400" />
+                        )}
+                        <span className={`text-sm ${column.visible ? 'text-gray-900 font-medium' : 'text-gray-500'}`}>
+                          {column.label}
+                        </span>
+                      </div>
+                      <span className="text-xs text-gray-400">#{column.order + 1}</span>
+                    </label>
+                  ))}
+                </div>
+
+                <div className="p-3 border-t border-gray-200 flex justify-between items-center">
+                  <span className="text-xs text-gray-600">
+                    {getVisibleColumns().length} of {columns.length} visible
+                  </span>
+                  <button
+                    onClick={resetColumns}
+                    className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+                  >
+                    Reset to Default
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
+
+      {/* Search Results Counter */}
+      {(filter.search || filter.health || filter.breed || filter.isActive !== null) && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <Search className="h-5 w-5 text-blue-600" />
+                <span className="text-sm font-medium text-blue-900">
+                  Found {filteredCattle.length} of {cattle.length} cattle
+                </span>
+              </div>
+              {filter.search && (
+                <span className="text-sm text-blue-700">
+                  matching "{filter.search}"
+                </span>
+              )}
+            </div>
+            <button
+              onClick={() => setFilter({ search: '', health: '', breed: '', owner: '', status: '', isActive: null, gaushalaId: undefined })}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm text-blue-700 hover:text-blue-900 hover:bg-blue-100 rounded-lg transition-colors"
+            >
+              <X className="h-4 w-4" />
+              Clear all filters
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Cattle Table */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -866,49 +1569,49 @@ export default function CattleManagement({ languageContext }: Props) {
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('name')}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('rfidTag')}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('breed')}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('age')}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('weight')}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('health')}</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('owner')}</th>
+                {/* Dynamic Column Headers */}
+                {getVisibleColumns().map((column) => (
+                  <th
+                    key={column.key}
+                    draggable
+                    onDragStart={() => handleDragStart(column.key)}
+                    onDragOver={(e) => handleDragOver(e, column.key)}
+                    onDrop={() => handleDrop(column.key)}
+                    onDragEnd={handleDragEnd}
+                    onClick={(e) => {
+                      // Only sort if not dragging
+                      if (!draggedColumn) {
+                        handleSort(column.key, e.shiftKey);
+                      }
+                    }}
+                    className={`px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-move hover:bg-gray-100 transition-colors select-none ${
+                      draggedColumn === column.key ? 'opacity-50 bg-blue-100' : ''
+                    } ${
+                      dragOverColumn === column.key && draggedColumn !== column.key ? 'border-l-4 border-blue-500' : ''
+                    }`}
+                    title="Drag to reorder | Click to sort | Shift+Click for multi-column sort"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="cursor-grab active:cursor-grabbing">⋮⋮</span>
+                      {column.label}
+                      {getSortIndicator(column.key)}
+                    </div>
+                  </th>
+                ))}
+                {/* Actions Column - Always Visible */}
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{t('actions')}</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {filteredCattle.map((cattle) => (
+              {applySorting(filteredCattle).map((cattle) => (
                 <tr key={cattle.id} className="hover:bg-gray-50 transition-colors">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
-                        {cattle.photoUrl ? (
-                          <img src={cattle.photoUrl} alt={cattle.name} className="h-10 w-10 rounded-full object-cover" />
-                        ) : (
-                          <span className="text-2xl">🐄</span>
-                        )}
-                      </div>
-                      <div className="ml-3">
-                        <div className="text-sm font-medium text-gray-900">{cattle.name}</div>
-                        <div className="text-sm text-gray-500">ID: {cattle.uniqueAnimalId}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <Wifi className="h-4 w-4 text-blue-500 mr-2" />
-                      <span className="text-sm font-mono text-gray-900">{cattle.rfidTagNo || 'No RFID'}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{getBreedName(cattle.breedId)}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{calculateAgeFromDob(cattle.dob)} {t('years')}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{cattle.weight || 'N/A'} {cattle.weight ? t('kg') : ''}</td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${getHealthColor(cattle.healthStatus || 'unknown')}`}>
-                      {t(cattle.healthStatus || 'unknown')}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{getGaushalaName(cattle.gaushalaId)}</td>
+                  {/* Dynamic Column Cells */}
+                  {getVisibleColumns().map((column) => (
+                    <td key={column.key} className="px-6 py-4 whitespace-nowrap">
+                      {renderCellContent(column.key, cattle)}
+                    </td>
+                  ))}
+                  {/* Actions Column - Always Visible */}
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex items-center space-x-2">
                       <button
@@ -947,7 +1650,7 @@ export default function CattleManagement({ languageContext }: Props) {
           </table>
         </div>
 
-        {filteredCattle.length === 0 && (
+        {applySorting(filteredCattle).length === 0 && (
           <div className="text-center py-12">
             <span className="text-6xl mx-auto mb-4 block">🐄</span>
             <p className="text-gray-500 text-lg">No cattle found matching your filters</p>

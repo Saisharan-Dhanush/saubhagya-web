@@ -6,19 +6,19 @@
 
 import { useEffect } from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
-import { Users, Home, Receipt, History, Heart, Package, Warehouse, Milk, Radio } from 'lucide-react';
+import { Users, Home, Receipt, History, Heart, Package, Warehouse, Milk, Radio, Pill } from 'lucide-react';
 import { usePlatform } from '../contexts/PlatformContext';
 import BaseLayout, { NavigationItem, BreadcrumbItem } from '@/components/layout/BaseLayout';
 import GauShalaHome from './gaushala/GauShalaHome';
 import CattleManagement from './gaushala/CattleManagement';
 import AddCattle from './gaushala/AddCattle';
-import CattleDetail from './gaushala/CattleDetail';
 import AllTransactions from './gaushala/AllTransactions';
 import FoodHistory from './gaushala/FoodHistory';
 import AddFoodHistory from './gaushala/AddFoodHistory';
 import ViewFoodHistory from './gaushala/ViewFoodHistory';
 import EditFoodHistory from './gaushala/EditFoodHistory';
 import HealthHistory from './gaushala/HealthHistory';
+import AddHealthRecord from './gaushala/AddHealthRecord';
 import AddMedicine from './gaushala/AddMedicine';
 import ViewCattle from './gaushala/ViewCattle';
 import EditCattle from './gaushala/EditCattle';
@@ -28,6 +28,7 @@ import MedicineList from './gaushala/MedicineList';
 import ShedList from './gaushala/sheds/ShedList';
 import AddShed from './gaushala/sheds/AddShed';
 import EditShed from './gaushala/sheds/EditShed';
+import ShedDetail from './gaushala/sheds/ShedDetail';
 import ShedCapacityDashboard from './gaushala/sheds/ShedCapacityDashboard';
 import InventoryList from './gaushala/inventory/InventoryList';
 import AddInventory from './gaushala/inventory/AddInventory';
@@ -36,8 +37,6 @@ import InventoryStockHistory from './gaushala/inventory/InventoryStockHistory';
 import MilkProductionList from './gaushala/production/MilkProductionList';
 import RecordMilkProduction from './gaushala/production/RecordMilkProduction';
 import MilkAnalytics from './gaushala/production/MilkAnalytics';
-import MedicalRecordsList from './gaushala/health/MedicalRecordsList';
-import AddMedicalRecord from './gaushala/health/AddMedicalRecord';
 import RFIDScanHistory from './gaushala/rfid/RFIDScanHistory';
 import RFIDAnalytics from './gaushala/rfid/RFIDAnalytics';
 
@@ -107,7 +106,6 @@ export default function GauShala() {
     if (path.includes('/cattle/add')) return 'addCattle';
     if (path.includes('/cattle/edit/')) return 'editCattle';
     if (path.includes('/cattle/view/')) return 'viewCattle';
-    if (path.includes('/cattle/') && path.split('/').length > 3) return 'cattleDetails';
     if (path.includes('/cattle')) return 'cattle';
     if (path.includes('/all-transactions')) return 'allTransactions';
     if (path.includes('/food-history/add')) return 'addFoodHistory';
@@ -118,9 +116,9 @@ export default function GauShala() {
     if (path.includes('/medicine/edit/')) return 'editMedicine';
     if (path.includes('/medicine/view/')) return 'viewMedicine';
     if (path.includes('/medicine')) return 'medicineList';
-    if (path.includes('/health-history/add')) return 'addMedicine';
-    if (path.includes('/health-history/edit/')) return 'editMedicine';
-    if (path.includes('/health-history/view/')) return 'viewMedicine';
+    if (path.includes('/health-history/add')) return 'addHealthRecord';
+    if (path.includes('/health-history/edit/')) return 'editHealthRecord';
+    if (path.includes('/health-history/view/')) return 'viewHealthRecord';
     if (path.includes('/health-history')) return 'healthHistory';
     return 'home';
   };
@@ -199,12 +197,6 @@ export default function GauShala() {
           { label: 'Cattle Management', onClick: () => navigate('/gaushala/cattle') },
           { label: 'Edit Cattle' }
         ];
-      case 'cattleDetails':
-        return [
-          { label: 'Gausakhi', onClick: () => navigate('/gaushala') },
-          { label: 'Cattle Management', onClick: () => navigate('/gaushala/cattle') },
-          { label: 'Cattle Details' }
-        ];
       case 'allTransactions':
         return [
           { label: 'Gausakhi', onClick: () => navigate('/gaushala') },
@@ -241,8 +233,26 @@ export default function GauShala() {
       case 'addMedicine':
         return [
           { label: 'Gausakhi', onClick: () => navigate('/gaushala') },
+          { label: 'Medicine Inventory', onClick: () => navigate('/gaushala/medicine') },
+          { label: 'Add Medicine' }
+        ];
+      case 'addHealthRecord':
+        return [
+          { label: 'Gausakhi', onClick: () => navigate('/gaushala') },
           { label: 'Health History', onClick: () => navigate('/gaushala/health-history') },
-          { label: 'Create Medicine' }
+          { label: 'Add Health Record' }
+        ];
+      case 'editHealthRecord':
+        return [
+          { label: 'Gausakhi', onClick: () => navigate('/gaushala') },
+          { label: 'Health History', onClick: () => navigate('/gaushala/health-history') },
+          { label: 'Edit Health Record' }
+        ];
+      case 'viewHealthRecord':
+        return [
+          { label: 'Gausakhi', onClick: () => navigate('/gaushala') },
+          { label: 'Health History', onClick: () => navigate('/gaushala/health-history') },
+          { label: 'View Health Record' }
         ];
       case 'medicineList':
         return [
@@ -280,7 +290,7 @@ export default function GauShala() {
       label: 'Cattle Management',
       icon: <Users className="w-4 h-4" />,
       onClick: () => setActiveTab('cattle'),
-      isActive: activeTab === 'cattle' || activeTab === 'addCattle' || activeTab === 'cattleDetails' || activeTab === 'viewCattle' || activeTab === 'editCattle'
+      isActive: activeTab === 'cattle' || activeTab === 'addCattle' || activeTab === 'viewCattle' || activeTab === 'editCattle'
     },
     {
       id: 'allTransactions',
@@ -301,7 +311,14 @@ export default function GauShala() {
       label: 'Health History',
       icon: <Heart className="w-4 h-4" />,
       onClick: () => setActiveTab('healthHistory'),
-      isActive: activeTab === 'healthHistory' || activeTab === 'addMedicine' || activeTab === 'viewMedicine' || activeTab === 'editMedicine' || activeTab === 'medicineList'
+      isActive: activeTab === 'healthHistory'
+    },
+    {
+      id: 'medicine',
+      label: 'Medicine Inventory',
+      icon: <Pill className="w-4 h-4" />,
+      onClick: () => navigate('/gaushala/medicine'),
+      isActive: activeTab === 'medicineList' || activeTab === 'addMedicine' || activeTab === 'viewMedicine' || activeTab === 'editMedicine'
     },
     {
       id: 'inventory',
@@ -370,13 +387,6 @@ export default function GauShala() {
           { label: 'Edit Cattle', url: location.pathname, module: 'gaushala' }
         ]);
         break;
-      case 'cattleDetails':
-        updateBreadcrumbs([
-          { label: t('title'), url: '/gaushala', module: 'gaushala' },
-          { label: t('cattle'), url: '/gaushala/cattle', module: 'gaushala' },
-          { label: t('cattleDetails'), url: location.pathname, module: 'gaushala' }
-        ]);
-        break;
       case 'allTransactions':
         updateBreadcrumbs([
           { label: t('title'), url: '/gaushala', module: 'gaushala' },
@@ -419,8 +429,49 @@ export default function GauShala() {
       case 'addMedicine':
         updateBreadcrumbs([
           { label: t('title'), url: '/gaushala', module: 'gaushala' },
+          { label: 'Medicine Inventory', url: '/gaushala/medicine', module: 'gaushala' },
+          { label: 'Add Medicine', url: '/gaushala/medicine/add', module: 'gaushala' }
+        ]);
+        break;
+      case 'addHealthRecord':
+        updateBreadcrumbs([
+          { label: t('title'), url: '/gaushala', module: 'gaushala' },
           { label: t('healthHistory'), url: '/gaushala/health-history', module: 'gaushala' },
-          { label: 'Create Medicine', url: '/gaushala/health-history/add', module: 'gaushala' }
+          { label: 'Add Health Record', url: '/gaushala/health-history/add', module: 'gaushala' }
+        ]);
+        break;
+      case 'editHealthRecord':
+        updateBreadcrumbs([
+          { label: t('title'), url: '/gaushala', module: 'gaushala' },
+          { label: t('healthHistory'), url: '/gaushala/health-history', module: 'gaushala' },
+          { label: 'Edit Health Record', url: location.pathname, module: 'gaushala' }
+        ]);
+        break;
+      case 'viewHealthRecord':
+        updateBreadcrumbs([
+          { label: t('title'), url: '/gaushala', module: 'gaushala' },
+          { label: t('healthHistory'), url: '/gaushala/health-history', module: 'gaushala' },
+          { label: 'View Health Record', url: location.pathname, module: 'gaushala' }
+        ]);
+        break;
+      case 'medicineList':
+        updateBreadcrumbs([
+          { label: t('title'), url: '/gaushala', module: 'gaushala' },
+          { label: 'Medicine Inventory', url: '/gaushala/medicine', module: 'gaushala' }
+        ]);
+        break;
+      case 'viewMedicine':
+        updateBreadcrumbs([
+          { label: t('title'), url: '/gaushala', module: 'gaushala' },
+          { label: 'Medicine Inventory', url: '/gaushala/medicine', module: 'gaushala' },
+          { label: 'View Medicine', url: location.pathname, module: 'gaushala' }
+        ]);
+        break;
+      case 'editMedicine':
+        updateBreadcrumbs([
+          { label: t('title'), url: '/gaushala', module: 'gaushala' },
+          { label: 'Medicine Inventory', url: '/gaushala/medicine', module: 'gaushala' },
+          { label: 'Edit Medicine', url: location.pathname, module: 'gaushala' }
         ]);
         break;
     }
@@ -444,7 +495,6 @@ export default function GauShala() {
         <Route path="/cattle/add" element={<AddCattle languageContext={languageContext} />} />
         <Route path="/cattle/view/:id" element={<ViewCattle />} />
         <Route path="/cattle/edit/:id" element={<EditCattle />} />
-        <Route path="/cattle/:id" element={<CattleDetail languageContext={languageContext} />} />
         <Route path="/all-transactions" element={<AllTransactions />} />
         <Route path="/transactions" element={<AllTransactions />} />
         <Route path="/food-history" element={<FoodHistory />} />
@@ -452,9 +502,10 @@ export default function GauShala() {
         <Route path="/food-history/view/:id" element={<ViewFoodHistory />} />
         <Route path="/food-history/edit/:id" element={<EditFoodHistory />} />
         <Route path="/health-history" element={<HealthHistory />} />
-        <Route path="/health-history/add" element={<AddMedicine />} />
-        <Route path="/health-history/view/:id" element={<ViewMedicine />} />
-        <Route path="/health-history/edit/:id" element={<EditMedicine />} />
+        <Route path="/health-history/add" element={<AddHealthRecord />} />
+        {/* TODO: Create ViewHealthRecord and EditHealthRecord components */}
+        {/* <Route path="/health-history/view/:id" element={<ViewHealthRecord />} /> */}
+        {/* <Route path="/health-history/edit/:id" element={<EditHealthRecord />} /> */}
         <Route path="/medicine" element={<MedicineList />} />
         <Route path="/medicine/add" element={<AddMedicine />} />
         <Route path="/medicine/view/:id" element={<ViewMedicine />} />
@@ -462,6 +513,7 @@ export default function GauShala() {
         <Route path="/sheds" element={<ShedList />} />
         <Route path="/sheds/add" element={<AddShed />} />
         <Route path="/sheds/edit/:id" element={<EditShed />} />
+        <Route path="/sheds/detail/:shedNumber" element={<ShedDetail />} />
         <Route path="/sheds/capacity" element={<ShedCapacityDashboard />} />
         <Route path="/inventory" element={<InventoryList />} />
         <Route path="/inventory/add" element={<AddInventory />} />
@@ -471,9 +523,6 @@ export default function GauShala() {
         <Route path="/production" element={<MilkProductionList />} />
         <Route path="/production/record" element={<RecordMilkProduction />} />
         <Route path="/production/analytics" element={<MilkAnalytics />} />
-        <Route path="/health/records" element={<MedicalRecordsList />} />
-        <Route path="/health/records/:cattleId" element={<MedicalRecordsList />} />
-        <Route path="/health/add" element={<AddMedicalRecord />} />
         <Route path="/rfid-analytics" element={<RFIDAnalytics />} />
         <Route path="/rfid/scans" element={<RFIDScanHistory />} />
         <Route path="/rfid/analytics" element={<RFIDAnalytics />} />

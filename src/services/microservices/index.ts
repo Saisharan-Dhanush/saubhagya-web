@@ -38,9 +38,9 @@ export const SERVICE_REGISTRY: Record<string, ServiceConfig> = {
   },
   'iot-service': {
     name: 'IoT Device Management Service',
-    baseUrl: 'http://localhost:8080',
+    baseUrl: 'http://localhost:8080/iot',
     port: 8080,
-    endpoints: ['/iot/api/v1/devices', '/iot/api/v1/rfid-tags', '/iot/api/v1/sensors'],
+    endpoints: ['/api/v1/devices', '/api/v1/rfid-tags', '/api/v1/sensors'],
     status: 'active'
   },
   'biogas-service': {
@@ -202,9 +202,28 @@ export class MicroservicesClient {
 
     // Handle 401 Unauthorized errors
     if (response.status === 401) {
-      console.error('📡 [callService] Got 401 Unauthorized, calling handle401Error()');
-      this.handle401Error();
-      throw new Error('Unauthorized - Session expired');
+      console.error('📡 [callService] Got 401 Unauthorized');
+
+      // Try to get error details from response
+      try {
+        const errorData = await response.clone().json();
+        console.error('📡 [callService] 401 Error Details:', errorData);
+        console.error('📡 [callService] Request URL:', url);
+        console.error('📡 [callService] Token exists:', !!token);
+
+        // Import toast to show error to user
+        import('sonner').then(({ toast }) => {
+          toast.error('Access Denied', {
+            description: `You don't have permission to access this resource. Error: ${errorData.message || errorData.error || 'Unauthorized'}`
+          });
+        });
+      } catch (e) {
+        console.error('📡 [callService] Could not parse error response');
+      }
+
+      // DON'T logout immediately - let the user see the error
+      // this.handle401Error();
+      throw new Error('Unauthorized - Access denied');
     }
 
     return response;
@@ -268,8 +287,10 @@ export const IoTServiceClient = {
 
       // Handle 401 Unauthorized
       if (response.status === 401) {
-        microservicesClient['handle401Error']();
-        throw new Error('Unauthorized - Session expired');
+        console.error('🐄 [IoTServiceClient.getCattleList] Got 401 Unauthorized - Access Denied');
+        // DON'T logout immediately
+        // microservicesClient['handle401Error']();
+        throw new Error('Unauthorized - Access denied');
       }
 
       if (!response.ok) {
@@ -321,8 +342,10 @@ export const IoTServiceClient = {
 
     // Handle 401 Unauthorized
     if (response.status === 401) {
-      microservicesClient['handle401Error']();
-      throw new Error('Unauthorized - Session expired');
+      console.error('🐄 [IoTServiceClient] Got 401 Unauthorized - Access Denied');
+      // DON'T logout immediately
+      // microservicesClient['handle401Error']();
+      throw new Error('Unauthorized - Access denied');
     }
 
     if (!response.ok) {
@@ -349,8 +372,10 @@ export const IoTServiceClient = {
 
     // Handle 401 Unauthorized
     if (response.status === 401) {
-      microservicesClient['handle401Error']();
-      throw new Error('Unauthorized - Session expired');
+      console.error('🐄 [IoTServiceClient] Got 401 Unauthorized - Access Denied');
+      // DON'T logout immediately
+      // microservicesClient['handle401Error']();
+      throw new Error('Unauthorized - Access denied');
     }
 
     if (!response.ok) {
@@ -376,8 +401,10 @@ export const IoTServiceClient = {
 
     // Handle 401 Unauthorized
     if (response.status === 401) {
-      microservicesClient['handle401Error']();
-      throw new Error('Unauthorized - Session expired');
+      console.error('🐄 [IoTServiceClient] Got 401 Unauthorized - Access Denied');
+      // DON'T logout immediately
+      // microservicesClient['handle401Error']();
+      throw new Error('Unauthorized - Access denied');
     }
 
     if (!response.ok) {

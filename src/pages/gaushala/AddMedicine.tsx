@@ -20,6 +20,110 @@ interface MedicineFormData {
   purpose: string;
 }
 
+// Custom field components defined outside to prevent re-creation on every render
+const InputField = ({
+  label,
+  value,
+  onChange,
+  type = 'text',
+  placeholder,
+  required = false,
+  error,
+  className = '',
+  ...props
+}: any) => (
+  <div className={`space-y-2 ${className}`}>
+    <label className="block text-sm font-medium text-gray-800">
+      {label} {required && <span className="text-red-500">*</span>}
+    </label>
+    <input
+      type={type}
+      value={value}
+      onChange={(e) => onChange(type === 'number' ? Number(e.target.value) : e.target.value)}
+      placeholder={placeholder}
+      className={`w-full px-3 py-2 bg-white border rounded-lg transition-all duration-200 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent hover:border-gray-400 ${
+        error ? 'border-red-300 bg-red-50' : 'border-gray-300'
+      }`}
+      {...props}
+    />
+    {error && (
+      <div className="flex items-center gap-2 text-sm text-red-600">
+        <span className="text-red-500">⚠</span>
+        {error}
+      </div>
+    )}
+  </div>
+);
+
+const SelectField = ({
+  label,
+  value,
+  onChange,
+  placeholder,
+  required = false,
+  error,
+  options,
+  className = ''
+}: any) => (
+  <div className={`space-y-2 ${className}`}>
+    <label className="block text-sm font-medium text-gray-800">
+      {label} {required && <span className="text-red-500">*</span>}
+    </label>
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className={`w-full px-3 py-2 bg-white border rounded-lg transition-all duration-200 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent hover:border-gray-400 ${
+        error ? 'border-red-300 bg-red-50' : 'border-gray-300'
+      }`}
+    >
+      <option value="">{placeholder}</option>
+      {options.map((option: any) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+    {error && (
+      <div className="flex items-center gap-2 text-sm text-red-600">
+        <span className="text-red-500">⚠</span>
+        {error}
+      </div>
+    )}
+  </div>
+);
+
+const TextAreaField = ({
+  label,
+  value,
+  onChange,
+  placeholder,
+  required = false,
+  error,
+  rows = 3,
+  className = ''
+}: any) => (
+  <div className={`space-y-2 ${className}`}>
+    <label className="block text-sm font-medium text-gray-800">
+      {label} {required && <span className="text-red-500">*</span>}
+    </label>
+    <textarea
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      rows={rows}
+      className={`w-full px-3 py-2 bg-white border rounded-lg transition-all duration-200 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent hover:border-gray-400 resize-vertical ${
+        error ? 'border-red-300 bg-red-50' : 'border-gray-300'
+      }`}
+    />
+    {error && (
+      <div className="flex items-center gap-2 text-sm text-red-600">
+        <span className="text-red-500">⚠</span>
+        {error}
+      </div>
+    )}
+  </div>
+);
+
 export default function AddMedicine() {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
@@ -107,7 +211,7 @@ export default function AddMedicine() {
 
         // Navigate back after delay
         setTimeout(() => {
-          navigate('/gaushala/health-history');
+          navigate('/gaushala/medicine');
         }, 2000);
       } else {
         setMessage({
@@ -126,111 +230,8 @@ export default function AddMedicine() {
   };
 
   const handleCancel = () => {
-    navigate('/gaushala/health-history');
+    navigate('/gaushala/medicine');
   };
-
-  const InputField = ({
-    label,
-    value,
-    onChange,
-    type = 'text',
-    placeholder,
-    required = false,
-    error,
-    className = '',
-    ...props
-  }: any) => (
-    <div className={`space-y-2 ${className}`}>
-      <label className="block text-sm font-medium text-gray-800">
-        {label} {required && <span className="text-red-500">*</span>}
-      </label>
-      <input
-        type={type}
-        value={value}
-        onChange={(e) => onChange(type === 'number' ? Number(e.target.value) : e.target.value)}
-        placeholder={placeholder}
-        className={`w-full px-3 py-2 bg-white border rounded-lg transition-all duration-200 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent hover:border-gray-400 ${
-          error ? 'border-red-300 bg-red-50' : 'border-gray-300'
-        }`}
-        {...props}
-      />
-      {error && (
-        <div className="flex items-center gap-2 text-sm text-red-600">
-          <span className="text-red-500">⚠</span>
-          {error}
-        </div>
-      )}
-    </div>
-  );
-
-  const SelectField = ({
-    label,
-    value,
-    onChange,
-    placeholder,
-    required = false,
-    error,
-    options,
-    className = ''
-  }: any) => (
-    <div className={`space-y-2 ${className}`}>
-      <label className="block text-sm font-medium text-gray-800">
-        {label} {required && <span className="text-red-500">*</span>}
-      </label>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={`w-full px-3 py-2 bg-white border rounded-lg transition-all duration-200 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent hover:border-gray-400 ${
-          error ? 'border-red-300 bg-red-50' : 'border-gray-300'
-        }`}
-      >
-        <option value="">{placeholder}</option>
-        {options.map((option: any) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-      {error && (
-        <div className="flex items-center gap-2 text-sm text-red-600">
-          <span className="text-red-500">⚠</span>
-          {error}
-        </div>
-      )}
-    </div>
-  );
-
-  const TextAreaField = ({
-    label,
-    value,
-    onChange,
-    placeholder,
-    required = false,
-    error,
-    rows = 3,
-    className = ''
-  }: any) => (
-    <div className={`space-y-2 ${className}`}>
-      <label className="block text-sm font-medium text-gray-800">
-        {label} {required && <span className="text-red-500">*</span>}
-      </label>
-      <textarea
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        rows={rows}
-        className={`w-full px-3 py-2 bg-white border rounded-lg transition-all duration-200 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent hover:border-gray-400 resize-vertical ${
-          error ? 'border-red-300 bg-red-50' : 'border-gray-300'
-        }`}
-      />
-      {error && (
-        <div className="flex items-center gap-2 text-sm text-red-600">
-          <span className="text-red-500">⚠</span>
-          {error}
-        </div>
-      )}
-    </div>
-  );
 
   return (
     <div className="space-y-6">

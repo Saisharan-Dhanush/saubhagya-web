@@ -127,7 +127,7 @@ export default function EditInventory() {
             required
           >
             {inventoryTypes.map((type) => (
-              <option key={type.id} value={type.id}>{type.typeName}</option>
+              <option key={type.id} value={type.id}>{type.name}</option>
             ))}
           </select>
         </div>
@@ -159,15 +159,18 @@ export default function EditInventory() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Reorder Level *</label>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Minimum Stock Level *</label>
           <input
             type="number"
             min="0"
-            value={formData.reorderLevel || 0}
-            onChange={(e) => handleChange('reorderLevel', parseFloat(e.target.value))}
+            value={formData.minimumStockLevel || 0}
+            onChange={(e) => handleChange('minimumStockLevel', parseFloat(e.target.value))}
             className="w-full rounded-lg border px-4 py-2"
             required
           />
+          <p className="mt-1 text-sm text-gray-500">
+            Alert will be shown when quantity falls below this level
+          </p>
         </div>
 
         <div>

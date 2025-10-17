@@ -7,21 +7,20 @@ import { useState, useCallback, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Save, ArrowLeft, Scan, Upload, Camera, FileText,
-  User, Home, Activity, Baby, Globe, Settings, Ruler,
+  User, Activity, Baby, Globe, Settings, Ruler,
   AlertCircle, CheckCircle, Clock, Plus, X
 } from 'lucide-react';
 import {
-  cattleApi,
-  masterDataApi,
+  gauShalaApi,
   calculateDobFromAge,
   calculateAgeFromDob,
   type Breed,
   type Species,
   type Gender,
   type Color,
-  type Location,
   type Cattle
 } from '../../services/gaushala/api';
+import { InputField, SelectField, TextAreaField, FileUploadField } from './CattleFormFields';
 
 interface LanguageContextType {
   language: 'hi' | 'en';
@@ -41,7 +40,7 @@ export default function EditCattle({ languageContext }: EditCattleProps) {
   const [species, setSpecies] = useState<Species[]>([]);
   const [genders, setGenders] = useState<Gender[]>([]);
   const [colors, setColors] = useState<Color[]>([]);
-  const [locations, setLocations] = useState<Location[]>([]);
+  const [sheds, setSheds] = useState<any[]>([]);
   const [masterDataLoading, setMasterDataLoading] = useState(true);
 
   const [formData, setFormData] = useState({
@@ -52,11 +51,9 @@ export default function EditCattle({ languageContext }: EditCattleProps) {
     speciesId: 0,
     genderId: 0,
     colorId: 0,
-    ageYears: 0,  // User sees age, will be converted to dob on submit
+    ageYears: 0,  // User enters age, will be converted to dob on submit
     dateOfEntry: new Date().toISOString().split('T')[0],
-
-    // Gaushala Assignment - Updated to use ID
-    gaushalaId: 0,
+    // NOTE: gaushalaId is NOT included - backend extracts it from JWT token automatically
 
     // Health & Medical Records
     vaccinationStatus: '',
@@ -120,60 +117,72 @@ export default function EditCattle({ languageContext }: EditCattleProps) {
       setLoading(true);
       try {
         // Load master data and cattle record in parallel
-        const [breedsRes, speciesRes, gendersRes, colorsRes, locationsRes, cattleRes] = await Promise.all([
-          masterDataApi.getAllBreeds(),
-          masterDataApi.getAllSpecies(),
-          masterDataApi.getAllGenders(),
-          masterDataApi.getAllColors(),
-          masterDataApi.getAllLocations(),
-          cattleApi.getCattleById(parseInt(id))
+        const [breedsRes, speciesRes, gendersRes, colorsRes, shedsRes, cattleRes] = await Promise.all([
+          gauShalaApi.masterData.getAllBreeds(),
+          gauShalaApi.masterData.getAllSpecies(),
+          gauShalaApi.masterData.getAllGenders(),
+          gauShalaApi.masterData.getAllColors(),
+          gauShalaApi.sheds.getAvailableSheds(),
+          gauShalaApi.cattle.getCattleById(parseInt(id))
         ]);
 
         if (breedsRes.success && breedsRes.data) setBreeds(breedsRes.data);
         if (speciesRes.success && speciesRes.data) setSpecies(speciesRes.data);
         if (gendersRes.success && gendersRes.data) setGenders(gendersRes.data);
         if (colorsRes.success && colorsRes.data) setColors(colorsRes.data);
-        if (locationsRes.success && locationsRes.data) setLocations(locationsRes.data);
+        if (shedsRes.success && shedsRes.data) setSheds(shedsRes.data);
 
         if (cattleRes.success && cattleRes.data) {
           const cattle = cattleRes.data;
-          // Transform backend data to form data (dob → ageYears)
+          // Transform backend data to form data (dob → ageYears, LocalDateTime → date strings)
+          // NOTE: gaushalaId is NOT loaded - backend handles it from JWT automatically
           setFormData({
             uniqueAnimalId: cattle.uniqueAnimalId,
             name: cattle.name || '',
             breedId: cattle.breedId,
             speciesId: cattle.speciesId,
             genderId: cattle.genderId,
-            colorId: cattle.colorId,
+            colorId: cattle.colorId || 0,
             ageYears: calculateAgeFromDob(cattle.dob),
-            dateOfEntry: new Date().toISOString().split('T')[0],
-            gaushalaId: cattle.gaushalaId,
-            vaccinationStatus: '',
-            disability: '',
+            dateOfEntry: cattle.dateOfEntry ? cattle.dateOfEntry.split('T')[0] : new Date().toISOString().split('T')[0],
+
+            // Health & Medical Records
+            vaccinationStatus: cattle.vaccinationStatus || '',
+            disability: cattle.disability || '',
             veterinarianName: cattle.vetName || '',
-            dewormingSchedule: '',
-            lastHealthCheckup: '',
+            dewormingSchedule: cattle.dewormingSchedule || '',
+            lastHealthCheckup: cattle.lastHealthCheckupDate ? cattle.lastHealthCheckupDate.split('T')[0] : '',
             veterinarianContact: cattle.vetContact || '',
-            medicalHistory: cattle.healthStatus || '',
+            medicalHistory: cattle.medicalHistory || cattle.healthStatus || '',
+
+            // Physical Characteristics
             weight: cattle.weight?.toString() || '',
-            hornStatus: '',
+            hornStatus: cattle.hornStatus || '',
             rfidTagNo: cattle.rfidTagNo || '',
             height: cattle.height?.toString() || '',
-            earTagNumber: '',
-            microchipNumber: '',
-            milkingStatus: '',
-            milkYieldPerDay: '',
-            numberOfCalves: '',
-            lactationNumber: '',
-            lastCalvingDate: '',
-            pregnancyStatus: '',
-            sourceOfAcquisition: '',
-            previousOwner: '',
-            dateOfAcquisition: '',
-            ownershipStatus: '',
+            earTagNumber: cattle.earTagNo || '',
+            microchipNumber: cattle.microchipNo || '',
+
+            // Reproductive Details
+            milkingStatus: cattle.milkingStatus || '',
+            milkYieldPerDay: cattle.milkYieldPerDay?.toString() || '',
+            numberOfCalves: cattle.calvesCount?.toString() || '',
+            lactationNumber: cattle.lactationNumber?.toString() || '',
+            lastCalvingDate: cattle.lastCalvingDate ? cattle.lastCalvingDate.split('T')[0] : '',
+            pregnancyStatus: cattle.pregnancyStatus || '',
+
+            // Origin & Ownership
+            sourceOfAcquisition: cattle.sourceId?.toString() || '',
+            previousOwner: cattle.previousOwner || '',
+            dateOfAcquisition: cattle.dateOfAcquisition ? cattle.dateOfAcquisition.split('T')[0] : '',
+            ownershipStatus: cattle.ownershipId?.toString() || '',
+
+            // Shelter & Feeding
             shedNumber: cattle.shedNumber || '',
-            typeOfFeed: '',
-            feedingSchedule: '',
+            typeOfFeed: cattle.feedTypeId?.toString() || '',
+            feedingSchedule: cattle.feedingSchedule || '',
+
+            // Supporting Documents
             photoFile: null,
             healthCertificate: null,
             vaccinationRecord: null,
@@ -200,26 +209,28 @@ export default function EditCattle({ languageContext }: EditCattleProps) {
     loadData();
   }, [id]);
 
-  const handleInputChange = useCallback((field: string, value: string | File | null | number) => {
+  const handleInputChange = useCallback((field: string, value: string | File | null) => {
     setFormData(prev => ({
       ...prev,
       [field]: value
     }));
 
-    // Clear error for this field
-    if (errors[field]) {
-      setErrors(prev => ({
-        ...prev,
-        [field]: ''
-      }));
-    }
+    // Clear error for this field - use functional update to prevent input unfocus bug
+    setErrors(prev => {
+      if (prev[field]) {
+        const newErrors = { ...prev };
+        delete newErrors[field];
+        return newErrors;
+      }
+      return prev;
+    });
     setMessage(null);
-  }, [errors]);
+  }, []); // Empty dependency array - function is now stable
 
   const handleScanRfid = async () => {
     setIsScanning(true);
     try {
-      const response = await cattleApi.scanRfid();
+      const response = await gauShalaApi.cattle.scanRfid();
       if (response.success && response.data) {
         handleInputChange('rfidTagNo', response.data.rfidTag);
 
@@ -254,11 +265,19 @@ export default function EditCattle({ languageContext }: EditCattleProps) {
     if (formData.speciesId === 0) newErrors.speciesId = 'Species is required';
     if (formData.genderId === 0) newErrors.genderId = 'Gender is required';
     if (!formData.dateOfEntry) newErrors.dateOfEntry = 'Date of Entry is required';
-    if (formData.gaushalaId === 0) newErrors.gaushalaId = 'Gaushala selection is required';
     if (!formData.rfidTagNo.trim()) newErrors.rfidTagNo = 'RFID Tag Number is required';
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
+  };
+
+  // Helper function to convert date string (YYYY-MM-DD) to LocalDateTime format (YYYY-MM-DDTHH:MM:SS)
+  const convertToLocalDateTime = (dateString: string): string | undefined => {
+    if (!dateString || dateString.trim() === '') return undefined;
+    // If already in ISO format, return as-is
+    if (dateString.includes('T')) return dateString;
+    // Convert date-only string to LocalDateTime at midnight
+    return `${dateString}T00:00:00`;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -284,51 +303,80 @@ export default function EditCattle({ languageContext }: EditCattleProps) {
     setMessage(null);
 
     try {
-      // Transform formData to match Cattle interface for backend
-      const cattleData: Omit<Cattle, 'id' | 'createdAt' | 'updatedAt'> = {
+      // Transform formData to match Cattle interface for backend - COMPLETE FIELD MAPPING
+      // NOTE: gaushalaId is NOT sent - backend extracts it from JWT token automatically
+      const cattleData: Omit<Cattle, 'id' | 'createdAt' | 'updatedAt' | 'gaushalaId'> = {
         uniqueAnimalId: formData.uniqueAnimalId,
-        name: formData.name,
+        name: formData.name || undefined,
         breedId: formData.breedId,
         speciesId: formData.speciesId,
         genderId: formData.genderId,
         colorId: formData.colorId,
         dob: formData.ageYears > 0 ? calculateDobFromAge(formData.ageYears) : new Date().toISOString(),
+
+        // Physical Characteristics
         weight: formData.weight ? parseFloat(formData.weight) : undefined,
         height: formData.height ? parseFloat(formData.height) : undefined,
+        hornStatus: formData.hornStatus || undefined,
         rfidTagNo: formData.rfidTagNo,
-        gaushalaId: formData.gaushalaId,
+        earTagNo: formData.earTagNumber || undefined,
+        microchipNo: formData.microchipNumber || undefined,
         shedNumber: formData.shedNumber || undefined,
-        healthStatus: formData.medicalHistory || undefined,
+
+        // Health & Medical Records
+        vaccinationStatus: formData.vaccinationStatus || undefined,
+        disability: formData.disability || undefined,
+        dewormingSchedule: formData.dewormingSchedule || undefined,
+        medicalHistory: formData.medicalHistory || undefined,
+        lastHealthCheckupDate: formData.lastHealthCheckup ? convertToLocalDateTime(formData.lastHealthCheckup) : undefined,
         vetName: formData.veterinarianName || undefined,
         vetContact: formData.veterinarianContact || undefined,
+
+        // Reproductive Details
+        milkingStatus: formData.milkingStatus || undefined,
+        lactationNumber: formData.lactationNumber ? parseInt(formData.lactationNumber) : undefined,
+        milkYieldPerDay: formData.milkYieldPerDay ? parseFloat(formData.milkYieldPerDay) : undefined,
+        lastCalvingDate: formData.lastCalvingDate ? convertToLocalDateTime(formData.lastCalvingDate) : undefined,
+        calvesCount: formData.numberOfCalves ? parseInt(formData.numberOfCalves) : undefined,
+        pregnancyStatus: formData.pregnancyStatus || undefined,
+
+        // Origin & Ownership
+        sourceId: formData.sourceOfAcquisition ? parseInt(formData.sourceOfAcquisition) : undefined,
+        dateOfAcquisition: formData.dateOfAcquisition ? convertToLocalDateTime(formData.dateOfAcquisition) : undefined,
+        previousOwner: formData.previousOwner || undefined,
+        ownershipId: formData.ownershipStatus ? parseInt(formData.ownershipStatus) : undefined,
+
+        // Shelter & Feeding
+        feedingSchedule: formData.feedingSchedule || undefined,
+        feedTypeId: formData.typeOfFeed ? parseInt(formData.typeOfFeed) : undefined,
+
+        // System fields
+        dateOfEntry: convertToLocalDateTime(formData.dateOfEntry),
         isActive: true,
         totalDungCollected: 0,
         lastDungCollection: 0,
       };
 
-      const response = await cattleApi.updateCattle(parseInt(id), cattleData);
+      const response = await gauShalaApi.cattle.updateCattle(parseInt(id), cattleData);
 
       if (response.success && response.data) {
         // Upload documents if provided
         const uploadPromises = [];
 
         if (formData.photoFile) {
-          uploadPromises.push(cattleApi.uploadPhoto(response.data.id!, formData.photoFile));
+          uploadPromises.push(gauShalaApi.cattle.uploadPhoto(response.data.id, formData.photoFile));
         }
 
         if (formData.healthCertificate) {
-          // TODO: Implement uploadDocument API method
-          console.log('Health certificate upload pending implementation');
+          uploadPromises.push(gauShalaApi.cattle.uploadDocument(response.data.id, formData.healthCertificate, 'health_certificate'));
         }
 
         if (formData.vaccinationRecord) {
-          // TODO: Implement uploadDocument API method
-          console.log('Vaccination record upload pending implementation');
+          uploadPromises.push(gauShalaApi.cattle.uploadDocument(response.data.id, formData.vaccinationRecord, 'vaccination_record'));
         }
 
         if (formData.purchaseDocument) {
-          // TODO: Implement uploadDocument API method
-          console.log('Purchase document upload pending implementation');
+          uploadPromises.push(gauShalaApi.cattle.uploadDocument(response.data.id, formData.purchaseDocument, 'purchase_document'));
         }
 
         // Wait for all uploads
@@ -375,13 +423,6 @@ export default function EditCattle({ languageContext }: EditCattleProps) {
       progress: 0
     },
     {
-      id: 'gaushala',
-      title: 'Gaushala',
-      icon: Home,
-      color: 'from-green-500 to-teal-600',
-      progress: 0
-    },
-    {
       id: 'physical',
       title: 'Physical Characteristics',
       icon: Ruler,
@@ -417,142 +458,6 @@ export default function EditCattle({ languageContext }: EditCattleProps) {
       progress: 0
     }
   ];
-
-  const InputField = ({
-    label,
-    value,
-    onChange,
-    type = 'text',
-    placeholder,
-    required = false,
-    error,
-    className = '',
-    ...props
-  }: any) => (
-    <div className={`space-y-2 ${className}`}>
-      <label className="block text-sm font-medium text-gray-800">
-        {label} {required && <span className="text-red-500">*</span>}
-      </label>
-      <input
-        type={type}
-        value={value}
-        onChange={(e) => onChange(type === 'number' ? Number(e.target.value) : e.target.value)}
-        placeholder={placeholder}
-        className={`w-full px-3 py-2 bg-white border rounded-lg transition-all duration-200 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent hover:border-gray-400 ${
-          error ? 'border-red-300 bg-red-50' : 'border-gray-300'
-        }`}
-        {...props}
-      />
-      {error && (
-        <div className="flex items-center gap-2 text-sm text-red-600">
-          <AlertCircle className="h-4 w-4" />
-          {error}
-        </div>
-      )}
-    </div>
-  );
-
-  const SelectField = ({
-    label,
-    value,
-    onChange,
-    options,
-    placeholder,
-    required = false,
-    error,
-    className = ''
-  }: any) => (
-    <div className={`space-y-2 ${className}`}>
-      <label className="block text-sm font-medium text-gray-800">
-        {label} {required && <span className="text-red-500">*</span>}
-      </label>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={`w-full px-3 py-2 bg-white border rounded-lg transition-all duration-200 text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent hover:border-gray-400 ${
-          error ? 'border-red-300 bg-red-50' : 'border-gray-300'
-        }`}
-      >
-        <option value="">{placeholder}</option>
-        {options.map((option: any) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-      {error && (
-        <div className="flex items-center gap-2 text-sm text-red-600">
-          <AlertCircle className="h-4 w-4" />
-          {error}
-        </div>
-      )}
-    </div>
-  );
-
-  const TextAreaField = ({
-    label,
-    value,
-    onChange,
-    placeholder,
-    rows = 3,
-    className = ''
-  }: any) => (
-    <div className={`space-y-2 ${className}`}>
-      <label className="block text-sm font-medium text-gray-800">
-        {label}
-      </label>
-      <textarea
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        rows={rows}
-        className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg transition-all duration-200 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent hover:border-gray-400 resize-none"
-      />
-    </div>
-  );
-
-  const FileUploadField = ({
-    label,
-    value,
-    onChange,
-    accept,
-    className = ''
-  }: any) => (
-    <div className={`space-y-2 ${className}`}>
-      <label className="block text-sm font-medium text-gray-800">
-        {label}
-      </label>
-      <div className="relative">
-        <input
-          type="file"
-          accept={accept}
-          onChange={(e) => onChange(e.target.files?.[0] || null)}
-          className="hidden"
-          id={label.replace(/\s+/g, '-').toLowerCase()}
-        />
-        <label
-          htmlFor={label.replace(/\s+/g, '-').toLowerCase()}
-          className="flex items-center justify-center w-full px-3 py-2 bg-white border-2 border-dashed border-gray-300 rounded-lg transition-all duration-200 cursor-pointer hover:border-blue-400 hover:bg-blue-50 group"
-        >
-          <div className="flex items-center gap-3 text-gray-600 group-hover:text-blue-600">
-            <Upload className="h-5 w-5" />
-            <span className="text-sm font-medium">
-              {value ? value.name : `Choose ${label.toLowerCase()}`}
-            </span>
-          </div>
-        </label>
-        {value && (
-          <button
-            type="button"
-            onClick={() => onChange(null)}
-            className="absolute top-2 right-2 p-1 bg-red-100 text-red-600 rounded-full hover:bg-red-200 transition-colors"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        )}
-      </div>
-    </div>
-  );
 
   if (loading) {
     return (
@@ -661,8 +566,8 @@ export default function EditCattle({ languageContext }: EditCattleProps) {
             {/* Basic Identification */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-3">
-                <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
-                  <User className="h-5 w-5 text-blue-600" />
+                <div className="h-10 w-10 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center">
+                  <User className="h-5 w-5 text-white" />
                 </div>
                 🐄 Basic Identification
               </h2>
@@ -691,7 +596,7 @@ export default function EditCattle({ languageContext }: EditCattleProps) {
                     placeholder={masterDataLoading ? 'Loading breeds...' : 'Select Breed'}
                     required
                     error={errors.breedId}
-                    options={breeds.map(breed => ({
+                    options={breeds.filter(breed => breed && breed.id && breed.name).map(breed => ({
                       value: breed.id.toString(),
                       label: breed.name
                     }))}
@@ -704,7 +609,7 @@ export default function EditCattle({ languageContext }: EditCattleProps) {
                     placeholder={masterDataLoading ? 'Loading species...' : 'Select Species'}
                     required
                     error={errors.speciesId}
-                    options={species.map(s => ({
+                    options={species.filter(s => s && s.id && s.name).map(s => ({
                       value: s.id.toString(),
                       label: s.name
                     }))}
@@ -717,7 +622,7 @@ export default function EditCattle({ languageContext }: EditCattleProps) {
                     placeholder={masterDataLoading ? 'Loading genders...' : 'Select Gender'}
                     required
                     error={errors.genderId}
-                    options={genders.map(gender => ({
+                    options={genders.filter(gender => gender && gender.id && gender.name).map(gender => ({
                       value: gender.id.toString(),
                       label: gender.name
                     }))}
@@ -729,7 +634,7 @@ export default function EditCattle({ languageContext }: EditCattleProps) {
                     onChange={(value: string) => handleInputChange('colorId', parseInt(value) || 0)}
                     placeholder={masterDataLoading ? 'Loading colors...' : 'Select Color'}
                     error={errors.colorId}
-                    options={colors.map(color => ({
+                    options={colors.filter(color => color && color.id && color.name).map(color => ({
                       value: color.id.toString(),
                       label: color.name
                     }))}
@@ -738,7 +643,7 @@ export default function EditCattle({ languageContext }: EditCattleProps) {
                   <InputField
                     label="Age (Years)"
                     value={formData.ageYears}
-                    onChange={(value: number) => handleInputChange('ageYears', value)}
+                    onChange={(value: string) => handleInputChange('ageYears', parseInt(value) || 0)}
                     type="number"
                     min="0"
                     placeholder="Enter age in years"
@@ -755,36 +660,11 @@ export default function EditCattle({ languageContext }: EditCattleProps) {
                 </div>
               </div>
 
-            {/* Gaushala */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-3">
-                <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
-                  <Home className="h-5 w-5 text-blue-600" />
-                </div>
-                🏠 Gaushala
-              </h2>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  <SelectField
-                    label="Select Gaushala"
-                    value={formData.gaushalaId}
-                    onChange={(value: string) => handleInputChange('gaushalaId', parseInt(value) || 0)}
-                    placeholder={masterDataLoading ? 'Loading locations...' : 'Select Gaushala'}
-                    required
-                    error={errors.gaushalaId}
-                    options={locations.map(location => ({
-                      value: location.id.toString(),
-                      label: location.name
-                    }))}
-                  />
-                </div>
-              </div>
-
             {/* Physical Characteristics */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-3">
-                <div className="h-10 w-10 bg-purple-100 rounded-full flex items-center justify-center">
-                  <Ruler className="h-5 w-5 text-purple-600" />
+                <div className="h-10 w-10 bg-gradient-to-br from-purple-500 to-violet-600 rounded-full flex items-center justify-center">
+                  <Ruler className="h-5 w-5 text-white" />
                 </div>
                 📏 Physical Characteristics
               </h2>
@@ -871,8 +751,8 @@ export default function EditCattle({ languageContext }: EditCattleProps) {
             {/* Health & Medical Records */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-3">
-                <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
-                  <Activity className="h-5 w-5 text-blue-600" />
+                <div className="h-10 w-10 bg-gradient-to-br from-red-500 to-pink-600 rounded-full flex items-center justify-center">
+                  <Activity className="h-5 w-5 text-white" />
                 </div>
                 🩺 Health & Medical Records
               </h2>
@@ -935,11 +815,12 @@ export default function EditCattle({ languageContext }: EditCattleProps) {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
 
                 {/* Reproductive Details (Female only) */}
-                {genders.find(g => g.name.toLowerCase() === 'female' && g.id === formData.genderId) && (
+                {/* Note: Check if genderId matches female gender ID from master data */}
+                {genders.find(g => g.name && g.name.toLowerCase() === 'female' && g.id === formData.genderId) && (
                   <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
                     <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-3">
-                      <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
-                        <Baby className="h-5 w-5 text-blue-600" />
+                      <div className="h-10 w-10 bg-gradient-to-br from-pink-500 to-rose-600 rounded-full flex items-center justify-center">
+                        <Baby className="h-5 w-5 text-white" />
                       </div>
                       🤱 Reproductive Details
                     </h2>
@@ -1008,8 +889,8 @@ export default function EditCattle({ languageContext }: EditCattleProps) {
                 {/* Origin & Ownership */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
                   <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-3">
-                    <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
-                      <Globe className="h-5 w-5 text-blue-600" />
+                    <div className="h-10 w-10 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-full flex items-center justify-center">
+                      <Globe className="h-5 w-5 text-white" />
                     </div>
                     🌍 Origin & Ownership
                   </h2>
@@ -1061,18 +942,22 @@ export default function EditCattle({ languageContext }: EditCattleProps) {
                 {/* Shelter & Feeding */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
                   <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-3">
-                    <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
-                      <Settings className="h-5 w-5 text-blue-600" />
+                    <div className="h-10 w-10 bg-gradient-to-br from-amber-500 to-yellow-600 rounded-full flex items-center justify-center">
+                      <Settings className="h-5 w-5 text-white" />
                     </div>
                     🏠 Shelter & Feeding
                   </h2>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <InputField
-                      label="Shed Number"
+                    <SelectField
+                      label="Shed Assignment"
                       value={formData.shedNumber}
                       onChange={(value: string) => handleInputChange('shedNumber', value)}
-                      placeholder="Assigned shed number"
+                      placeholder={masterDataLoading ? 'Loading sheds...' : sheds.length === 0 ? 'No sheds available' : 'Select Shed'}
+                      options={sheds.map(shed => ({
+                        value: shed.shedNumber,
+                        label: `${shed.shedName} (${shed.currentOccupancy || 0}/${shed.capacity || 0} occupied)`
+                      }))}
                     />
 
                     <SelectField
@@ -1108,8 +993,8 @@ export default function EditCattle({ languageContext }: EditCattleProps) {
             {/* Supporting Documents */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 sticky top-4">
               <h2 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-3">
-                <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
-                  <FileText className="h-5 w-5 text-blue-600" />
+                <div className="h-10 w-10 bg-gradient-to-br from-slate-500 to-gray-600 rounded-full flex items-center justify-center">
+                  <FileText className="h-5 w-5 text-white" />
                 </div>
                 📎 Documents
               </h2>
