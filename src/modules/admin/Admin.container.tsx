@@ -9,6 +9,7 @@ import { AuditLogs } from './pages/AuditLogs/AuditLogs';
 import { Reports } from './pages/Reports/Reports';
 import { Configuration } from './pages/Configuration/Configuration';
 import { Profile } from './pages/Profile/Profile';
+import UserAccessManagement from '@/pages/admin/UserAccessManagement';
 import {
   LayoutDashboard,
   Users,
@@ -16,7 +17,8 @@ import {
   FileText,
   BarChart3,
   Settings,
-  UserCircle
+  UserCircle,
+  Shield
 } from 'lucide-react';
 
 const AdminModule: React.FC = () => {
@@ -61,6 +63,13 @@ const AdminModule: React.FC = () => {
       isActive: location.pathname === '/admin/reports'
     },
     {
+      id: 'access-management',
+      label: 'Access Management',
+      icon: <Shield className="w-5 h-5" />,
+      onClick: () => navigate('/admin/access-management'),
+      isActive: location.pathname === '/admin/access-management'
+    },
+    {
       id: 'config',
       label: 'Configuration',
       icon: <Settings className="w-5 h-5" />,
@@ -93,6 +102,7 @@ const AdminModule: React.FC = () => {
         <Route path="/devices" element={<DeviceRegistry />} />
         <Route path="/audit" element={<AuditLogs />} />
         <Route path="/reports" element={<Reports />} />
+        <Route path="/access-management" element={<UserAccessManagement />} />
         <Route path="/config" element={<Configuration />} />
         <Route path="/profile" element={<Profile />} />
       </Routes>

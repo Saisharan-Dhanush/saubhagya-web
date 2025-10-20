@@ -22,7 +22,7 @@ interface WebSocketProviderProps {
 
 export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
   children,
-  url = process.env.REACT_APP_WS_URL || 'ws://localhost:8080/purification/ws'
+  url = import.meta.env.VITE_PURIFICATION_SERVICE_URL?.replace('http', 'ws').replace('https', 'wss') + '/ws' || 'ws://localhost:8087/purification-service/ws'
 }) => {
   const [wsData, setWsData] = useState<WebSocketData | null>(null);
   const [isConnected, setIsConnected] = useState(false);

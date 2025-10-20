@@ -4,8 +4,8 @@
  */
 
 // Gaushala service runs on port 8086 with /gaushala-service context path
-const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:8086/gaushala-service';
-const GAUSHALA_SERVICE_URL = 'http://localhost:8086/gaushala-service';
+const API_BASE_URL = import.meta.env.VITE_GAUSHALA_SERVICE_URL || 'http://localhost:8086/gaushala-service';
+const GAUSHALA_SERVICE_URL = import.meta.env.VITE_GAUSHALA_SERVICE_URL || 'http://localhost:8086/gaushala-service';
 
 export interface ApiResponse<T> {
   success: boolean;
@@ -189,6 +189,7 @@ export interface Medicine {
 // FoodHistory entity interface - matches backend FoodHistoryDTO.java exactly
 export interface FoodHistory {
   id?: number;
+  gaushalaId: number;                // Required - links to gaushala
   livestockId: number;
   shedId: number;
   inventoryId?: number;
@@ -200,12 +201,19 @@ export interface FoodHistory {
   updatedAt?: string;
 
   // Nested DTOs for displaying names instead of just IDs
+  gaushala?: GaushalaSummaryDTO;     // Shows gaushala name, registration number
   livestock?: LivestockSummaryDTO;   // Shows cattle name, ID, breed
   shed?: ShedSummaryDTO;             // Shows shed number, name
   inventory?: InventorySummaryDTO;   // Shows feed item name, type, unit
 }
 
 // Nested summary DTO interfaces
+export interface GaushalaSummaryDTO {
+  id: number;
+  gaushalaName: string;          // e.g., "Shri Krishna Gaushala"
+  registrationNumber?: string;   // e.g., "GS-2024-001"
+}
+
 export interface LivestockSummaryDTO {
   id: number;
   uniqueAnimalId: string;  // e.g., "COW0001"
@@ -1000,6 +1008,39 @@ export const foodHistoryApi = {
     }
   },
 
+  async getFoodHistoryByGaushala(gaushalaId: number, page: number = 0, size: number = 20): Promise<ApiResponse<PagedResponse<FoodHistory>>> {
+    try {
+      const response = await fetch(`${GAUSHALA_SERVICE_URL}/api/v1/gaushala/food-history/gaushala/${gaushalaId}?page=${page}&size=${size}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...(localStorage.getItem('saubhagya_jwt_token') && {
+            Authorization: `Bearer ${localStorage.getItem('saubhagya_jwt_token')}`
+          }),
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        return {
+          success: false,
+          error: error.message || `HTTP error! status: ${response.status}`,
+        };
+      }
+
+      const data = await response.json();
+      return {
+        success: true,
+        data,
+      };
+    } catch (error) {
+      console.error('Get food history by gaushala failed:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error occurred',
+      };
+    }
+  },
+
   async createFoodHistory(foodHistory: Omit<FoodHistory, 'id' | 'createdAt' | 'updatedAt'>): Promise<ApiResponse<FoodHistory>> {
     try {
       const response = await fetch(`${GAUSHALA_SERVICE_URL}/api/v1/gaushala/food-history`, {
@@ -1624,9 +1665,10 @@ export const shedApi = {
 
 export interface MilkRecord {
   id?: number;
+  gaushalaId?: number;
   entryType?: string;
-  cowId?: string;
-  milkQuantity?: number;
+  shedNumber: string;
+  milkQuantity: number;
   fatPercentage?: number;
   snf?: number;
   notes?: string;
@@ -1651,8 +1693,8 @@ export const milkProductionApi = {
     return apiCall<MilkRecord>(`/api/v1/gaushala/milk-records/${id}`);
   },
 
-  async getMilkRecordsByCow(cowId: string, page: number = 0, size: number = 20): Promise<ApiResponse<PagedResponse<MilkRecord>>> {
-    return apiCall<PagedResponse<MilkRecord>>(`/api/v1/gaushala/milk-records/cow/${cowId}?page=${page}&size=${size}`);
+  async getMilkRecordsByShed(shedNumber: string, page: number = 0, size: number = 20): Promise<ApiResponse<PagedResponse<MilkRecord>>> {
+    return apiCall<PagedResponse<MilkRecord>>(`/api/v1/gaushala/milk-records/shed/${encodeURIComponent(shedNumber)}?page=${page}&size=${size}`);
   },
 
   async createMilkRecord(data: MilkRecord): Promise<ApiResponse<MilkRecord>> {
@@ -1679,8 +1721,8 @@ export const milkProductionApi = {
     return apiCall<number>(`/api/v1/gaushala/milk-records/total-quantity?startDate=${startDate}&endDate=${endDate}`);
   },
 
-  async getAverageFatPercentage(cowId: string): Promise<ApiResponse<number>> {
-    return apiCall<number>(`/api/v1/gaushala/milk-records/cow/${cowId}/avg-fat`);
+  async getTotalMilkQuantityByShed(shedNumber: string, startDate: string, endDate: string): Promise<ApiResponse<number>> {
+    return apiCall<number>(`/api/v1/gaushala/milk-records/shed/${encodeURIComponent(shedNumber)}/total-quantity?startDate=${startDate}&endDate=${endDate}`);
   },
 
   async getMilkRecordsByDateRange(startDate: string, endDate: string, page: number = 0, size: number = 20): Promise<ApiResponse<PagedResponse<MilkRecord>>> {
@@ -1945,6 +1987,279 @@ export const rfidApi = {
   },
 };
 
+// ============================================================================
+// GAUSHALA ACCESS MANAGEMENT API
+// ============================================================================
+
+export interface UserGaushalaAccess {
+  id?: number;
+  userId: number;
+  gaushalaId: number;
+  grantedAt?: string;
+  grantedBy?: number;
+  // Enriched data
+  gaushalaName?: string;
+  location?: string;
+}
+
+export const gaushalaAccessApi = {
+  /**
+   * Get all user-gaushala access records
+   * GET /api/v1/admin/gaushala-access/all
+   */
+  async getAllUserGaushalaAccess(): Promise<ApiResponse<UserGaushalaAccess[]>> {
+    try {
+      const response = await fetch(`${GAUSHALA_SERVICE_URL}/api/v1/admin/gaushala-access/all`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(localStorage.getItem('saubhagya_jwt_token') && {
+            Authorization: `Bearer ${localStorage.getItem('saubhagya_jwt_token')}`
+          }),
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return {
+        success: true,
+        data: data.data || data,
+        message: data.message
+      };
+    } catch (error) {
+      console.error('Failed to fetch user-gaushala access records:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to fetch access records'
+      };
+    }
+  },
+
+  /**
+   * Grant user access to gaushala
+   * POST /api/v1/admin/gaushala-access/grant
+   */
+  async grantGaushalaAccess(userId: number, gaushalaId: number): Promise<ApiResponse<any>> {
+    try {
+      const response = await fetch(`${GAUSHALA_SERVICE_URL}/api/v1/admin/gaushala-access/grant`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(localStorage.getItem('saubhagya_jwt_token') && {
+            Authorization: `Bearer ${localStorage.getItem('saubhagya_jwt_token')}`
+          }),
+        },
+        body: JSON.stringify({ userId, gaushalaId })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: response.statusText }));
+        throw new Error(errorData.error || errorData.message || `HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      return {
+        success: true,
+        data: data,
+        message: data.message || 'Access granted successfully'
+      };
+    } catch (error) {
+      console.error('Failed to grant gaushala access:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to grant access'
+      };
+    }
+  },
+
+  /**
+   * Revoke user access to gaushala
+   * DELETE /api/v1/admin/gaushala-access/revoke
+   */
+  async revokeGaushalaAccess(userId: number, gaushalaId: number): Promise<ApiResponse<any>> {
+    try {
+      const response = await fetch(
+        `${GAUSHALA_SERVICE_URL}/api/v1/admin/gaushala-access/revoke?userId=${userId}&gaushalaId=${gaushalaId}`,
+        {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(localStorage.getItem('saubhagya_jwt_token') && {
+              Authorization: `Bearer ${localStorage.getItem('saubhagya_jwt_token')}`
+            }),
+          }
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: response.statusText }));
+        throw new Error(errorData.error || errorData.message || `HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      return {
+        success: true,
+        data: data,
+        message: data.message || 'Access revoked successfully'
+      };
+    } catch (error) {
+      console.error('Failed to revoke gaushala access:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to revoke access'
+      };
+    }
+  },
+
+  /**
+   * Check if user has access to gaushala
+   * GET /api/v1/admin/gaushala-access/check
+   */
+  async checkGaushalaAccess(userId: number, gaushalaId: number): Promise<ApiResponse<{ hasAccess: boolean }>> {
+    try {
+      const response = await fetch(
+        `${GAUSHALA_SERVICE_URL}/api/v1/admin/gaushala-access/check?userId=${userId}&gaushalaId=${gaushalaId}`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(localStorage.getItem('saubhagya_jwt_token') && {
+              Authorization: `Bearer ${localStorage.getItem('saubhagya_jwt_token')}`
+            }),
+          }
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return {
+        success: true,
+        data: data,
+        message: data.hasAccess ? 'User has access' : 'User does not have access'
+      };
+    } catch (error) {
+      console.error('Failed to check gaushala access:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to check access'
+      };
+    }
+  },
+
+  /**
+   * Get all gaushalas
+   * GET /api/v1/gaushala/admin/gaushalas
+   */
+  async getAllGaushalas(): Promise<ApiResponse<any[]>> {
+    try {
+      const response = await fetch(`${GAUSHALA_SERVICE_URL}/api/v1/gaushala/admin/gaushalas`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(localStorage.getItem('saubhagya_jwt_token') && {
+            Authorization: `Bearer ${localStorage.getItem('saubhagya_jwt_token')}`
+          }),
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return {
+        success: true,
+        data: data.gaushalas || data.data || [],
+        message: data.message
+      };
+    } catch (error) {
+      console.error('Failed to fetch all gaushalas:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to fetch gaushalas'
+      };
+    }
+  },
+
+  /**
+   * Get user details from auth-service
+   * GET /api/auth/users/{id}
+   */
+  async getUserById(userId: number): Promise<ApiResponse<any>> {
+    try {
+      const AUTH_API_BASE = `${import.meta.env.VITE_AUTH_SERVICE_URL || 'http://localhost:8081/auth-service'}/api/auth`;
+      const response = await fetch(`${AUTH_API_BASE}/users/${userId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(localStorage.getItem('saubhagya_jwt_token') && {
+            Authorization: `Bearer ${localStorage.getItem('saubhagya_jwt_token')}`
+          }),
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return {
+        success: true,
+        data: data
+      };
+    } catch (error) {
+      console.error(`Failed to fetch user ${userId}:`, error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to fetch user'
+      };
+    }
+  },
+
+  /**
+   * Get gaushala details by ID
+   * Note: Backend doesn't have individual gaushala endpoint, so we fetch all and filter
+   */
+  async getGaushalaById(gaushalaId: string | number): Promise<ApiResponse<any>> {
+    try {
+      // Fetch all gaushalas and find the one with matching ID
+      const response = await this.getAllGaushalas();
+
+      if (!response.success) {
+        throw new Error(response.error || 'Failed to fetch gaushalas');
+      }
+
+      const gaushalas = response.data || [];
+      const gaushala = gaushalas.find((g: any) => g.id === Number(gaushalaId));
+
+      if (!gaushala) {
+        return {
+          success: false,
+          error: `Gaushala with ID ${gaushalaId} not found`
+        };
+      }
+
+      return {
+        success: true,
+        data: gaushala,
+        message: 'Gaushala fetched successfully'
+      };
+    } catch (error) {
+      console.error(`Failed to fetch gaushala ${gaushalaId}:`, error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to fetch gaushala'
+      };
+    }
+  }
+};
+
 // Combined API export
 export const api = {
   dashboard: dashboardApi,
@@ -1958,6 +2273,7 @@ export const api = {
   healthRecords: healthRecordsApi,
   rfid: rfidApi,
   masterData: masterDataApi,
+  gaushalaAccess: gaushalaAccessApi,
 };
 
 // Legacy export for backward compatibility - maintain nested structure
@@ -1973,6 +2289,7 @@ export const gauShalaApi = {
   healthRecords: healthRecordsApi,
   rfid: rfidApi,
   masterData: masterDataApi,
+  gaushalaAccess: gaushalaAccessApi,
 };
 
 export default api;

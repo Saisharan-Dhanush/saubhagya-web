@@ -33,14 +33,14 @@ export interface EnvironmentConfig {
 const ENVIRONMENTS: Record<Environment, EnvironmentConfig> = {
   development: {
     name: 'development',
-    apiBaseUrl: 'http://localhost:8081', // Auth service as main gateway
+    apiBaseUrl: import.meta.env.VITE_AUTH_SERVICE_URL || 'http://localhost:8081/auth-service', // Auth service as main gateway
     microservices: {
-      auth: 'http://localhost:8081',
-      iot: 'http://localhost:8080',
-      transaction: 'http://localhost:8082',
-      sales: 'http://localhost:8083',
-      reporting: 'http://localhost:8084',
-      government: 'http://localhost:8085',
+      auth: import.meta.env.VITE_AUTH_SERVICE_URL || 'http://localhost:8081/auth-service',
+      iot: import.meta.env.VITE_IOT_SERVICE_URL || 'http://localhost:8080/iot',
+      transaction: import.meta.env.VITE_BIOGAS_SERVICE_URL || 'http://localhost:8082',
+      sales: import.meta.env.VITE_COMMERCE_SERVICE_URL || 'http://localhost:8083',
+      reporting: import.meta.env.VITE_REPORTING_SERVICE_URL || 'http://localhost:8084',
+      government: import.meta.env.VITE_GOVERNMENT_SERVICE_URL || 'http://localhost:8085',
     },
     features: {
       enableMockData: false,

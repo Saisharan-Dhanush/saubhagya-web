@@ -4,7 +4,9 @@
  * All APIs require JWT authentication
  */
 
-const BIOGAS_SERVICE_URL = 'http://localhost:8082/biogas-service/api/v1';
+const BIOGAS_SERVICE_URL = import.meta.env.VITE_BIOGAS_SERVICE_URL
+  ? `${import.meta.env.VITE_BIOGAS_SERVICE_URL}/biogas-service/api/v1`
+  : 'http://localhost:8082/biogas-service/api/v1';
 
 // Helper function to get JWT token
 const getAuthHeaders = (): HeadersInit => {
@@ -1318,6 +1320,229 @@ export const biogasService = {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to fetch alert history'
+      };
+    }
+  },
+
+  // ==========================================
+  // User-Cluster Access Management APIs
+  // ==========================================
+
+  /**
+   * Get all user-cluster access records
+   * GET /api/v1/admin/cluster-access/all
+   */
+  async getAllUserClusterAccess(): Promise<ApiResponse<any[]>> {
+    try {
+      const response = await fetch(`${BIOGAS_SERVICE_URL}/admin/cluster-access/all`, {
+        method: 'GET',
+        headers: getAuthHeaders()
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return {
+        success: data.success || true,
+        data: data.data || data,
+        message: data.message
+      };
+    } catch (error) {
+      console.error('Failed to fetch user-cluster access records:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to fetch access records'
+      };
+    }
+  },
+
+  /**
+   * Grant user access to cluster
+   * POST /api/v1/admin/cluster-access/grant
+   */
+  async grantClusterAccess(userId: number, clusterId: number): Promise<ApiResponse<any>> {
+    try {
+      const response = await fetch(`${BIOGAS_SERVICE_URL}/admin/cluster-access/grant`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ userId, clusterId })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: response.statusText }));
+        throw new Error(errorData.error || errorData.message || `HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      return {
+        success: data.success || true,
+        data: data.data || data,
+        message: data.message || 'Access granted successfully'
+      };
+    } catch (error) {
+      console.error('Failed to grant cluster access:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to grant access'
+      };
+    }
+  },
+
+  /**
+   * Revoke user access to cluster
+   * DELETE /api/v1/admin/cluster-access/revoke
+   */
+  async revokeClusterAccess(userId: number, clusterId: number): Promise<ApiResponse<any>> {
+    try {
+      const response = await fetch(
+        `${BIOGAS_SERVICE_URL}/admin/cluster-access/revoke?userId=${userId}&clusterId=${clusterId}`,
+        {
+          method: 'DELETE',
+          headers: getAuthHeaders()
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: response.statusText }));
+        throw new Error(errorData.error || errorData.message || `HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      return {
+        success: data.success || true,
+        data: data.data || data,
+        message: data.message || 'Access revoked successfully'
+      };
+    } catch (error) {
+      console.error('Failed to revoke cluster access:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to revoke access'
+      };
+    }
+  },
+
+  /**
+   * Check if user has access to cluster
+   * GET /api/v1/admin/cluster-access/check
+   */
+  async checkClusterAccess(userId: number, clusterId: number): Promise<ApiResponse<{ hasAccess: boolean }>> {
+    try {
+      const response = await fetch(
+        `${BIOGAS_SERVICE_URL}/admin/cluster-access/check?userId=${userId}&clusterId=${clusterId}`,
+        {
+          method: 'GET',
+          headers: getAuthHeaders()
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return {
+        success: true,
+        data: data,
+        message: data.hasAccess ? 'User has access' : 'User does not have access'
+      };
+    } catch (error) {
+      console.error('Failed to check cluster access:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to check access'
+      };
+    }
+  },
+
+  /**
+   * Get user details from auth-service
+   * GET /api/auth/users/{id}
+   */
+  async getUserById(userId: number): Promise<ApiResponse<any>> {
+    try {
+      const AUTH_API_BASE = `${import.meta.env.VITE_AUTH_SERVICE_URL || 'http://localhost:8081/auth-service'}/api/auth`;
+      const response = await fetch(`${AUTH_API_BASE}/users/${userId}`, {
+        method: 'GET',
+        headers: getAuthHeaders()
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return {
+        success: true,
+        data: data
+      };
+    } catch (error) {
+      console.error(`Failed to fetch user ${userId}:`, error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to fetch user'
+      };
+    }
+  },
+
+  /**
+   * Get cluster details by ID
+   * GET /api/v1/admin/cluster-access/cluster/{id}
+   */
+  async getClusterById(clusterId: string | number): Promise<ApiResponse<any>> {
+    try {
+      const response = await fetch(`${BIOGAS_SERVICE_URL}/admin/cluster-access/cluster/${clusterId}`, {
+        method: 'GET',
+        headers: getAuthHeaders()
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return {
+        success: true,
+        data: data,
+        message: 'Cluster retrieved successfully'
+      };
+    } catch (error) {
+      console.error(`Failed to fetch cluster ${clusterId}:`, error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to fetch cluster'
+      };
+    }
+  },
+
+  /**
+   * Get gaushala details by ID
+   * GET /api/v1/gaushalas/{id}
+   */
+  async getGaushalaById(gaushalaId: string | number): Promise<ApiResponse<any>> {
+    try {
+      const response = await fetch(`${BIOGAS_SERVICE_URL}/gaushalas/${gaushalaId}`, {
+        method: 'GET',
+        headers: getAuthHeaders()
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return {
+        success: data.success || true,
+        data: data.data || data,
+        message: data.message
+      };
+    } catch (error) {
+      console.error(`Failed to fetch gaushala ${gaushalaId}:`, error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to fetch gaushala'
       };
     }
   }

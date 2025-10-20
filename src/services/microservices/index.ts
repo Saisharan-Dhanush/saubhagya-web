@@ -13,13 +13,23 @@ export interface ServiceConfig {
 }
 
 /**
+ * Get service URL from environment variables
+ * Falls back to localhost if not defined
+ */
+const getServiceUrl = (serviceName: string, defaultUrl: string): string => {
+  const envKey = `VITE_${serviceName.toUpperCase().replace('-', '_')}_URL`;
+  return import.meta.env[envKey] || defaultUrl;
+};
+
+/**
  * Service Registry - Defines all microservices in the SAUBHAGYA platform
- * Updated to match verified microservices (all 6 healthy)
+ * URLs are loaded from environment variables (.env file)
+ * Updated to match verified microservices (all 8 services)
  */
 export const SERVICE_REGISTRY: Record<string, ServiceConfig> = {
   'auth-service': {
     name: 'Authentication Service',
-    baseUrl: 'http://localhost:8081/auth-service',
+    baseUrl: getServiceUrl('auth-service', 'http://localhost:8081/auth-service'),
     port: 8081,
     endpoints: [
       '/auth/api/v1/login',
@@ -38,35 +48,35 @@ export const SERVICE_REGISTRY: Record<string, ServiceConfig> = {
   },
   'iot-service': {
     name: 'IoT Device Management Service',
-    baseUrl: 'http://localhost:8080/iot',
+    baseUrl: getServiceUrl('iot-service', 'http://localhost:8080/iot'),
     port: 8080,
     endpoints: ['/api/v1/devices', '/api/v1/rfid-tags', '/api/v1/sensors'],
     status: 'active'
   },
   'biogas-service': {
     name: 'Biogas Contribution Service',
-    baseUrl: 'http://localhost:8082',
+    baseUrl: getServiceUrl('biogas-service', 'http://localhost:8082'),
     port: 8082,
     endpoints: ['/api/v1/contributions', '/api/v1/contributions/farmer', '/api/v1/contributions/analytics'],
     status: 'active'
   },
   'transaction-service': {
     name: 'Biogas Transaction Service',
-    baseUrl: 'http://localhost:8082',
+    baseUrl: getServiceUrl('biogas-service', 'http://localhost:8082'),
     port: 8082,
     endpoints: ['/api/v1/transactions', '/api/v1/biogas-production', '/api/v1/contributions'],
     status: 'active'
   },
-  'sales-service': {
+  'commerce-service': {
     name: 'Commerce & Sales Service',
-    baseUrl: 'http://localhost:8083',
+    baseUrl: getServiceUrl('commerce-service', 'http://localhost:8083'),
     port: 8083,
     endpoints: ['/api/commerce/sales', '/api/commerce/orders', '/api/commerce/contributions'],
     status: 'active'
   },
   'reporting-service': {
     name: 'Analytics & Reporting Service',
-    baseUrl: 'http://localhost:8084',
+    baseUrl: getServiceUrl('reporting-service', 'http://localhost:8084'),
     port: 8084,
     endpoints: [
       '/api/v1/analytics',
@@ -84,22 +94,37 @@ export const SERVICE_REGISTRY: Record<string, ServiceConfig> = {
   },
   'government-service': {
     name: 'Government Dashboard Service',
-    baseUrl: 'http://localhost:8085',
+    baseUrl: getServiceUrl('government-service', 'http://localhost:8085'),
     port: 8085,
     endpoints: ['/government/api/v1/dashboard', '/government/api/v1/schemes', '/government/api/v1/compliance'],
     status: 'active'
   },
+  'gaushala-service': {
+    name: 'Gaushala Management Service',
+    baseUrl: getServiceUrl('gaushala-service', 'http://localhost:8086/gaushala-service'),
+    port: 8086,
+    endpoints: [
+      '/api/v1/gaushala/cattle',
+      '/api/v1/gaushala/sheds',
+      '/api/v1/gaushala/milk-records',
+      '/api/v1/gaushala/health-records',
+      '/api/v1/gaushala/food-history',
+      '/api/v1/gaushala/inventory',
+      '/api/v1/gaushala-access'
+    ],
+    status: 'active'
+  },
   'purification-service': {
     name: 'Biogas Purification Service',
-    baseUrl: 'http://localhost:8087',
+    baseUrl: getServiceUrl('purification-service', 'http://localhost:8087/purification-service'),
     port: 8087,
     endpoints: [
-      '/purification-service/api/v1/cycles',
-      '/purification-service/api/v1/metrics/realtime',
-      '/purification-service/api/v1/quality/tests',
-      '/purification-service/api/v1/inventory',
-      '/purification-service/api/v1/slurry',
-      '/purification-service/api/v1/maintenance'
+      '/api/v1/cycles',
+      '/api/v1/metrics/realtime',
+      '/api/v1/quality/tests',
+      '/api/v1/inventory',
+      '/api/v1/slurry',
+      '/api/v1/maintenance'
     ],
     status: 'active'
   }
@@ -280,7 +305,8 @@ export const IoTServiceClient = {
         headers['Authorization'] = `Bearer ${token}`;
       }
 
-      const response = await fetch('http://localhost:8086/gaushala-service/api/v1/gaushala/cattle', {
+      const gaushalaUrl = getServiceUrl('gaushala-service', 'http://localhost:8086/gaushala-service');
+      const response = await fetch(`${gaushalaUrl}/api/v1/gaushala/cattle`, {
         method: 'GET',
         headers
       });
@@ -334,7 +360,8 @@ export const IoTServiceClient = {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    const response = await fetch('http://localhost:8086/gaushala-service/api/v1/gaushala/cattle', {
+    const gaushalaUrl = getServiceUrl('gaushala-service', 'http://localhost:8086/gaushala-service');
+    const response = await fetch(`${gaushalaUrl}/api/v1/gaushala/cattle`, {
       method: 'POST',
       headers,
       body: JSON.stringify(cattleData)
@@ -364,7 +391,8 @@ export const IoTServiceClient = {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    const response = await fetch(`http://localhost:8086/gaushala-service/api/v1/gaushala/cattle/${id}`, {
+    const gaushalaUrl = getServiceUrl('gaushala-service', 'http://localhost:8086/gaushala-service');
+    const response = await fetch(`${gaushalaUrl}/api/v1/gaushala/cattle/${id}`, {
       method: 'PUT',
       headers,
       body: JSON.stringify(cattleData)
@@ -394,7 +422,8 @@ export const IoTServiceClient = {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    const response = await fetch(`http://localhost:8086/gaushala-service/api/v1/gaushala/cattle/${id}`, {
+    const gaushalaUrl = getServiceUrl('gaushala-service', 'http://localhost:8086/gaushala-service');
+    const response = await fetch(`${gaushalaUrl}/api/v1/gaushala/cattle/${id}`, {
       method: 'DELETE',
       headers
     });
@@ -419,7 +448,8 @@ export const BiogasServiceClient = {
   async recordContribution(contributionData: any) {
     // Try biogas service first, fall back to mock success if service is unavailable
     try {
-      const response = await fetch('http://localhost:8082/api/v1/contributions', {
+      const biogasUrl = getServiceUrl('biogas-service', 'http://localhost:8082');
+      const response = await fetch(`${biogasUrl}/api/v1/contributions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -453,7 +483,8 @@ export const BiogasServiceClient = {
   async getAllContributions(page: number = 0, size: number = 100) {
     try {
       // Fetch all contributions with field worker info
-      const response = await fetch('http://localhost:8082/api/v1/contributions', {
+      const biogasUrl = getServiceUrl('biogas-service', 'http://localhost:8082');
+      const response = await fetch(`${biogasUrl}/api/v1/contributions`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json'

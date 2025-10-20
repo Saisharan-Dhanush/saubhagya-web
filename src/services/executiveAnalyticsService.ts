@@ -7,7 +7,7 @@ import type {
 } from '../contexts/ExecutiveAnalyticsContext';
 
 // API Configuration
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8080';
+const API_BASE_URL = import.meta.env.VITE_REPORTING_SERVICE_URL || 'http://localhost:8084';
 const API_TIMEOUT = 10000;
 
 // API Response Types

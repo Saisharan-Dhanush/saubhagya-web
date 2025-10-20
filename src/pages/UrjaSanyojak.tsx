@@ -43,9 +43,9 @@ interface BusinessLead {
   nextFollowUp: Date;
 }
 
-const API_BASE = 'http://localhost:8080' // IoT service for mapping and feasibility
-const AUTH_API = 'http://localhost:8081/auth/api' // Auth service
-const BIOGAS_API = 'http://localhost:8080/biogas' // For production data
+const API_BASE = import.meta.env.VITE_IOT_SERVICE_URL || 'http://localhost:8080/iot' // IoT service for mapping and feasibility
+const AUTH_API = `${import.meta.env.VITE_AUTH_SERVICE_URL || 'http://localhost:8081/auth-service'}/api` // Auth service
+const BIOGAS_API = `${import.meta.env.VITE_BIOGAS_SERVICE_URL || 'http://localhost:8082'}/biogas` // For production data
 
 export default function UrjaSanyojak() {
   const { trackModuleUsage, updateBreadcrumbs } = usePlatform()

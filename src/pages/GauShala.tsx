@@ -120,6 +120,20 @@ export default function GauShala() {
     if (path.includes('/health-history/edit/')) return 'editHealthRecord';
     if (path.includes('/health-history/view/')) return 'viewHealthRecord';
     if (path.includes('/health-history')) return 'healthHistory';
+    if (path.includes('/inventory/add')) return 'addInventory';
+    if (path.includes('/inventory/edit/')) return 'editInventory';
+    if (path.includes('/inventory') && path.includes('/stock-history')) return 'inventoryStockHistory';
+    if (path.includes('/inventory')) return 'inventory';
+    if (path.includes('/sheds/add')) return 'addShed';
+    if (path.includes('/sheds/edit/')) return 'editShed';
+    if (path.includes('/sheds/detail/')) return 'shedDetail';
+    if (path.includes('/sheds/capacity')) return 'shedCapacity';
+    if (path.includes('/sheds')) return 'sheds';
+    if (path.includes('/production/record')) return 'recordProduction';
+    if (path.includes('/production/analytics')) return 'productionAnalytics';
+    if (path.includes('/production') || path.includes('/milk-production')) return 'production';
+    if (path.includes('/rfid/analytics')) return 'rfidAnalytics';
+    if (path.includes('/rfid/scans') || path.includes('/rfid-analytics')) return 'rfidScans';
     return 'home';
   };
 
@@ -270,6 +284,86 @@ export default function GauShala() {
           { label: 'Gausakhi', onClick: () => navigate('/gaushala') },
           { label: 'Medicine Inventory', onClick: () => navigate('/gaushala/medicine') },
           { label: 'Edit Medicine' }
+        ];
+      case 'inventory':
+        return [
+          { label: 'Gausakhi', onClick: () => navigate('/gaushala') },
+          { label: 'Inventory' }
+        ];
+      case 'addInventory':
+        return [
+          { label: 'Gausakhi', onClick: () => navigate('/gaushala') },
+          { label: 'Inventory', onClick: () => navigate('/gaushala/inventory') },
+          { label: 'Add Inventory' }
+        ];
+      case 'editInventory':
+        return [
+          { label: 'Gausakhi', onClick: () => navigate('/gaushala') },
+          { label: 'Inventory', onClick: () => navigate('/gaushala/inventory') },
+          { label: 'Edit Inventory' }
+        ];
+      case 'inventoryStockHistory':
+        return [
+          { label: 'Gausakhi', onClick: () => navigate('/gaushala') },
+          { label: 'Inventory', onClick: () => navigate('/gaushala/inventory') },
+          { label: 'Stock History' }
+        ];
+      case 'sheds':
+        return [
+          { label: 'Gausakhi', onClick: () => navigate('/gaushala') },
+          { label: 'Shed Management' }
+        ];
+      case 'addShed':
+        return [
+          { label: 'Gausakhi', onClick: () => navigate('/gaushala') },
+          { label: 'Shed Management', onClick: () => navigate('/gaushala/sheds') },
+          { label: 'Add Shed' }
+        ];
+      case 'editShed':
+        return [
+          { label: 'Gausakhi', onClick: () => navigate('/gaushala') },
+          { label: 'Shed Management', onClick: () => navigate('/gaushala/sheds') },
+          { label: 'Edit Shed' }
+        ];
+      case 'shedDetail':
+        return [
+          { label: 'Gausakhi', onClick: () => navigate('/gaushala') },
+          { label: 'Shed Management', onClick: () => navigate('/gaushala/sheds') },
+          { label: 'Shed Details' }
+        ];
+      case 'shedCapacity':
+        return [
+          { label: 'Gausakhi', onClick: () => navigate('/gaushala') },
+          { label: 'Shed Management', onClick: () => navigate('/gaushala/sheds') },
+          { label: 'Capacity Dashboard' }
+        ];
+      case 'production':
+        return [
+          { label: 'Gausakhi', onClick: () => navigate('/gaushala') },
+          { label: 'Milk Production' }
+        ];
+      case 'recordProduction':
+        return [
+          { label: 'Gausakhi', onClick: () => navigate('/gaushala') },
+          { label: 'Milk Production', onClick: () => navigate('/gaushala/production') },
+          { label: 'Record Production' }
+        ];
+      case 'productionAnalytics':
+        return [
+          { label: 'Gausakhi', onClick: () => navigate('/gaushala') },
+          { label: 'Milk Production', onClick: () => navigate('/gaushala/production') },
+          { label: 'Analytics' }
+        ];
+      case 'rfidScans':
+        return [
+          { label: 'Gausakhi', onClick: () => navigate('/gaushala') },
+          { label: 'RFID Analytics', onClick: () => navigate('/gaushala/rfid/scans') },
+          { label: 'Scan History' }
+        ];
+      case 'rfidAnalytics':
+        return [
+          { label: 'Gausakhi', onClick: () => navigate('/gaushala') },
+          { label: 'RFID Analytics' }
         ];
       default:
         return [{ label: 'Gausakhi' }];
@@ -472,6 +566,100 @@ export default function GauShala() {
           { label: t('title'), url: '/gaushala', module: 'gaushala' },
           { label: 'Medicine Inventory', url: '/gaushala/medicine', module: 'gaushala' },
           { label: 'Edit Medicine', url: location.pathname, module: 'gaushala' }
+        ]);
+        break;
+      case 'inventory':
+        updateBreadcrumbs([
+          { label: t('title'), url: '/gaushala', module: 'gaushala' },
+          { label: 'Inventory', url: '/gaushala/inventory', module: 'gaushala' }
+        ]);
+        break;
+      case 'addInventory':
+        updateBreadcrumbs([
+          { label: t('title'), url: '/gaushala', module: 'gaushala' },
+          { label: 'Inventory', url: '/gaushala/inventory', module: 'gaushala' },
+          { label: 'Add Inventory', url: '/gaushala/inventory/add', module: 'gaushala' }
+        ]);
+        break;
+      case 'editInventory':
+        updateBreadcrumbs([
+          { label: t('title'), url: '/gaushala', module: 'gaushala' },
+          { label: 'Inventory', url: '/gaushala/inventory', module: 'gaushala' },
+          { label: 'Edit Inventory', url: location.pathname, module: 'gaushala' }
+        ]);
+        break;
+      case 'inventoryStockHistory':
+        updateBreadcrumbs([
+          { label: t('title'), url: '/gaushala', module: 'gaushala' },
+          { label: 'Inventory', url: '/gaushala/inventory', module: 'gaushala' },
+          { label: 'Stock History', url: location.pathname, module: 'gaushala' }
+        ]);
+        break;
+      case 'sheds':
+        updateBreadcrumbs([
+          { label: t('title'), url: '/gaushala', module: 'gaushala' },
+          { label: 'Shed Management', url: '/gaushala/sheds', module: 'gaushala' }
+        ]);
+        break;
+      case 'addShed':
+        updateBreadcrumbs([
+          { label: t('title'), url: '/gaushala', module: 'gaushala' },
+          { label: 'Shed Management', url: '/gaushala/sheds', module: 'gaushala' },
+          { label: 'Add Shed', url: '/gaushala/sheds/add', module: 'gaushala' }
+        ]);
+        break;
+      case 'editShed':
+        updateBreadcrumbs([
+          { label: t('title'), url: '/gaushala', module: 'gaushala' },
+          { label: 'Shed Management', url: '/gaushala/sheds', module: 'gaushala' },
+          { label: 'Edit Shed', url: location.pathname, module: 'gaushala' }
+        ]);
+        break;
+      case 'shedDetail':
+        updateBreadcrumbs([
+          { label: t('title'), url: '/gaushala', module: 'gaushala' },
+          { label: 'Shed Management', url: '/gaushala/sheds', module: 'gaushala' },
+          { label: 'Shed Details', url: location.pathname, module: 'gaushala' }
+        ]);
+        break;
+      case 'shedCapacity':
+        updateBreadcrumbs([
+          { label: t('title'), url: '/gaushala', module: 'gaushala' },
+          { label: 'Shed Management', url: '/gaushala/sheds', module: 'gaushala' },
+          { label: 'Capacity Dashboard', url: '/gaushala/sheds/capacity', module: 'gaushala' }
+        ]);
+        break;
+      case 'production':
+        updateBreadcrumbs([
+          { label: t('title'), url: '/gaushala', module: 'gaushala' },
+          { label: 'Milk Production', url: '/gaushala/production', module: 'gaushala' }
+        ]);
+        break;
+      case 'recordProduction':
+        updateBreadcrumbs([
+          { label: t('title'), url: '/gaushala', module: 'gaushala' },
+          { label: 'Milk Production', url: '/gaushala/production', module: 'gaushala' },
+          { label: 'Record Production', url: '/gaushala/production/record', module: 'gaushala' }
+        ]);
+        break;
+      case 'productionAnalytics':
+        updateBreadcrumbs([
+          { label: t('title'), url: '/gaushala', module: 'gaushala' },
+          { label: 'Milk Production', url: '/gaushala/production', module: 'gaushala' },
+          { label: 'Analytics', url: '/gaushala/production/analytics', module: 'gaushala' }
+        ]);
+        break;
+      case 'rfidScans':
+        updateBreadcrumbs([
+          { label: t('title'), url: '/gaushala', module: 'gaushala' },
+          { label: 'RFID Analytics', url: '/gaushala/rfid/scans', module: 'gaushala' },
+          { label: 'Scan History', url: '/gaushala/rfid/scans', module: 'gaushala' }
+        ]);
+        break;
+      case 'rfidAnalytics':
+        updateBreadcrumbs([
+          { label: t('title'), url: '/gaushala', module: 'gaushala' },
+          { label: 'RFID Analytics', url: '/gaushala/rfid/analytics', module: 'gaushala' }
         ]);
         break;
     }

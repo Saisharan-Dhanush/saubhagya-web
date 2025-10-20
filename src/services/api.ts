@@ -110,8 +110,11 @@ class ApiService {
   // Authentication APIs (Auth Service - Port 8081)
   async login(phone: string, password: string): Promise<ApiResponse<{ user: User; token: string }>> {
     try {
+      // Get auth service URL from environment variables
+      const authServiceUrl = import.meta.env.VITE_AUTH_SERVICE_URL || 'http://localhost:8081/auth-service';
+
       // Direct login to auth service - send phone as-is
-      const loginResponse = await fetch('http://localhost:8081/auth-service/api/auth/login', {
+      const loginResponse = await fetch(`${authServiceUrl}/api/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

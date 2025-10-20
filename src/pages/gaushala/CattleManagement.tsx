@@ -535,8 +535,8 @@ export default function CattleManagement({ languageContext }: Props) {
    */
   const calculateRelevanceScore = (cattle: Cattle, searchTerms: string[]): number => {
     let score = 0;
-    const lowerName = cattle.name.toLowerCase();
-    const lowerUniqueId = cattle.uniqueAnimalId.toLowerCase();
+    const lowerName = cattle.name?.toLowerCase() || '';
+    const lowerUniqueId = cattle.uniqueAnimalId?.toLowerCase() || '';
     const lowerRfid = cattle.rfidTagNo?.toLowerCase() || '';
 
     searchTerms.forEach(term => {
@@ -602,9 +602,9 @@ export default function CattleManagement({ languageContext }: Props) {
         filtered = filtered.filter(c => {
           switch (field) {
             case 'name':
-              return c.name.toLowerCase().includes(valueLower);
+              return c.name?.toLowerCase().includes(valueLower) || false;
             case 'id':
-              return c.uniqueAnimalId.toLowerCase().includes(valueLower);
+              return c.uniqueAnimalId?.toLowerCase().includes(valueLower) || false;
             case 'rfid':
               return c.rfidTagNo?.toLowerCase().includes(valueLower);
             case 'breed':
@@ -640,9 +640,9 @@ export default function CattleManagement({ languageContext }: Props) {
           score: calculateRelevanceScore(c, searchTerms),
           matchCount: searchTerms.filter(term => {
             const matches = [
-              c.name.toLowerCase().includes(term),
-              c.uniqueAnimalId.toLowerCase().includes(term),
-              c.rfidTagNo?.toLowerCase().includes(term),
+              c.name?.toLowerCase().includes(term) || false,
+              c.uniqueAnimalId?.toLowerCase().includes(term) || false,
+              c.rfidTagNo?.toLowerCase().includes(term) || false,
               getBreedName(c.breedId).toLowerCase().includes(term),
               getSpeciesName(c.speciesId).toLowerCase().includes(term),
               getGenderName(c.genderId).toLowerCase().includes(term),

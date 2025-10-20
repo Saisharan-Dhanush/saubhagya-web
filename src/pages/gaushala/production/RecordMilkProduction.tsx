@@ -1,67 +1,64 @@
 /**
  * Record Milk Production - Create new milk production record
- * 100% API-driven, NO hardcoded data
+ * Updated to use shed-based tracking instead of individual cattle tracking
  */
 
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Save, Milk } from 'lucide-react';
-import { milkProductionApi, cattleApi, type MilkRecord, type Cattle } from '../../../services/gaushala/api';
+import { milkProductionApi, shedApi, type MilkRecord, type Shed } from '../../../services/gaushala/api';
 import { getLoggedInUserGaushalaId } from '../../../utils/auth';
 
 export default function RecordMilkProduction() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  const [cattle, setCattle] = useState<Cattle[]>([]);
-  const [loadingCattle, setLoadingCattle] = useState(true);
+  const [sheds, setSheds] = useState<Shed[]>([]);
+  const [loadingSheds, setLoadingSheds] = useState(true);
   const [formData, setFormData] = useState<Partial<MilkRecord>>({
-    cowId: 0,
+    shedNumber: '',
     gaushalaId: 0,
-    recordDate: new Date().toISOString().split('T')[0],
-    morningQuantity: 0,
-    eveningQuantity: 0,
+    milkQuantity: 0,
     fatPercentage: 0,
-    snfPercentage: 0,
-    quality: 'GOOD',
+    snf: 0,
     notes: '',
+    status: 'RECORDED',
   });
 
   useEffect(() => {
-    const gaushalaId = getLoggedInUserGaushalaId();
-    if (gaushalaId) {
-      setFormData((prev) => ({ ...prev, gaushalaId }));
-      loadCattle();
-    }
+    // Get gaushalaId from JWT, or use fallback for testing
+    const gaushalaId = getLoggedInUserGaushalaId() || 15;
+    setFormData((prev) => ({ ...prev, gaushalaId }));
+    loadSheds();
   }, []);
 
-  const loadCattle = async () => {
-    setLoadingCattle(true);
+  const loadSheds = async () => {
+    setLoadingSheds(true);
     try {
-      // Load cattle list - filter for milking cows if possible
-      const response = await cattleApi.getAllCattle(0, 100);
+      // Load list of sheds
+      const response = await shedApi.getAllSheds(0, 100);
       if (response.success && response.data) {
-        setCattle(response.data.content);
+        // Filter only active sheds
+        const activeSheds = response.data.content.filter(
+          (shed) => shed.status === 'ACTIVE'
+        );
+        setSheds(activeSheds);
       }
     } catch (error) {
-      console.error('Error loading cattle:', error);
+      console.error('Error loading sheds:', error);
     } finally {
-      setLoadingCattle(false);
+      setLoadingSheds(false);
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.cowId || formData.cowId === 0) {
-      alert('Please select a cow');
+    if (!formData.shedNumber || formData.shedNumber === '') {
+      alert('Please select a shed');
       return;
     }
-    if (!formData.recordDate) {
-      alert('Please select a date');
-      return;
-    }
-    if (formData.morningQuantity! < 0 || formData.eveningQuantity! < 0) {
-      alert('Quantities cannot be negative');
+    if (!formData.milkQuantity || formData.milkQuantity <= 0) {
+      alert('Milk quantity must be greater than 0');
       return;
     }
 
@@ -86,10 +83,6 @@ export default function RecordMilkProduction() {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  const calculateTotal = (): number => {
-    return (formData.morningQuantity || 0) + (formData.eveningQuantity || 0);
-  };
-
   return (
     <div className="p-6 max-w-2xl mx-auto">
       <button
@@ -109,79 +102,45 @@ export default function RecordMilkProduction() {
 
       <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow p-6 space-y-4">
         <div className="grid grid-cols-2 gap-4">
-          <div>
+          <div className="col-span-2">
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Select Cow *
+              Select Shed *
             </label>
-            {loadingCattle ? (
-              <div className="text-sm text-gray-500">Loading cattle...</div>
+            {loadingSheds ? (
+              <div className="text-sm text-gray-500">Loading sheds...</div>
             ) : (
               <select
-                value={formData.cowId}
-                onChange={(e) => handleChange('cowId', parseInt(e.target.value))}
+                value={formData.shedNumber}
+                onChange={(e) => handleChange('shedNumber', e.target.value)}
                 className="w-full rounded-lg border px-4 py-2"
                 required
               >
-                <option value={0}>Select a cow</option>
-                {cattle.map((cow) => (
-                  <option key={cow.id} value={cow.id}>
-                    {cow.rfidTagNo} - {cow.name || `Cow #${cow.id}`}
+                <option value="">Select a shed</option>
+                {sheds.map((shed) => (
+                  <option key={shed.id} value={shed.shedNumber}>
+                    {shed.shedNumber} - {shed.shedName} (Capacity: {shed.currentOccupancy}/{shed.capacity})
                   </option>
                 ))}
               </select>
             )}
           </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Record Date *
-            </label>
-            <input
-              type="date"
-              value={formData.recordDate}
-              onChange={(e) => handleChange('recordDate', e.target.value)}
-              className="w-full rounded-lg border px-4 py-2"
-              required
-            />
-          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
-          <div>
+          <div className="col-span-2">
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Morning Quantity (Liters) *
+              Total Milk Quantity (Liters) *
             </label>
             <input
               type="number"
               min="0"
               step="0.1"
-              value={formData.morningQuantity}
-              onChange={(e) => handleChange('morningQuantity', parseFloat(e.target.value) || 0)}
+              value={formData.milkQuantity}
+              onChange={(e) => handleChange('milkQuantity', parseFloat(e.target.value) || 0)}
               className="w-full rounded-lg border px-4 py-2"
+              placeholder="Total liters collected from this shed"
               required
             />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Evening Quantity (Liters) *
-            </label>
-            <input
-              type="number"
-              min="0"
-              step="0.1"
-              value={formData.eveningQuantity}
-              onChange={(e) => handleChange('eveningQuantity', parseFloat(e.target.value) || 0)}
-              className="w-full rounded-lg border px-4 py-2"
-              required
-            />
-          </div>
-        </div>
-
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-          <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-blue-900">Total Quantity:</span>
-            <span className="text-xl font-bold text-blue-900">{calculateTotal().toFixed(2)} L</span>
           </div>
         </div>
 
@@ -204,15 +163,15 @@ export default function RecordMilkProduction() {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              SNF Percentage
+              SNF (Solids Not Fat)
             </label>
             <input
               type="number"
               min="0"
               max="100"
               step="0.1"
-              value={formData.snfPercentage}
-              onChange={(e) => handleChange('snfPercentage', parseFloat(e.target.value) || 0)}
+              value={formData.snf}
+              onChange={(e) => handleChange('snf', parseFloat(e.target.value) || 0)}
               className="w-full rounded-lg border px-4 py-2"
               placeholder="e.g., 8.5"
             />
@@ -221,17 +180,16 @@ export default function RecordMilkProduction() {
 
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Quality
+            Status
           </label>
           <select
-            value={formData.quality}
-            onChange={(e) => handleChange('quality', e.target.value)}
+            value={formData.status}
+            onChange={(e) => handleChange('status', e.target.value)}
             className="w-full rounded-lg border px-4 py-2"
           >
-            <option value="EXCELLENT">Excellent</option>
-            <option value="GOOD">Good</option>
-            <option value="AVERAGE">Average</option>
-            <option value="POOR">Poor</option>
+            <option value="RECORDED">Recorded</option>
+            <option value="VERIFIED">Verified</option>
+            <option value="PROCESSED">Processed</option>
           </select>
         </div>
 
@@ -244,7 +202,7 @@ export default function RecordMilkProduction() {
             onChange={(e) => handleChange('notes', e.target.value)}
             className="w-full rounded-lg border px-4 py-2"
             rows={3}
-            placeholder="Additional notes about this production record..."
+            placeholder="Additional notes about this production record (e.g., morning/evening collection, quality observations)..."
           ></textarea>
         </div>
 

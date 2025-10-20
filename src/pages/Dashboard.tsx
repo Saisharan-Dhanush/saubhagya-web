@@ -4,9 +4,9 @@ import { useAuth } from '../contexts/AuthContext'
 import { usePlatform } from '../contexts/PlatformContext'
 
 // Backend API endpoints
-const IOT_API = import.meta.env.VITE_IOT_API || 'http://localhost:8080';
-const BIOGAS_API = import.meta.env.VITE_BIOGAS_API || 'http://localhost:8080';
-const SALES_API = import.meta.env.VITE_SALES_API || 'http://localhost:8083';
+const IOT_API = import.meta.env.VITE_IOT_SERVICE_URL || 'http://localhost:8080/iot';
+const BIOGAS_API = import.meta.env.VITE_BIOGAS_SERVICE_URL || 'http://localhost:8082';
+const SALES_API = import.meta.env.VITE_COMMERCE_SERVICE_URL || 'http://localhost:8083';
 
 interface IoTData {
   ch4: number;
