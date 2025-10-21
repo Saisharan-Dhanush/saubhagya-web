@@ -5,7 +5,7 @@
  */
 
 const BIOGAS_SERVICE_URL = import.meta.env.VITE_BIOGAS_SERVICE_URL
-  ? `${import.meta.env.VITE_BIOGAS_SERVICE_URL}/biogas-service/api/v1`
+  ? `${import.meta.env.VITE_BIOGAS_SERVICE_URL}/api/v1`
   : 'http://localhost:8082/biogas-service/api/v1';
 
 // Helper function to get JWT token
