@@ -334,6 +334,12 @@ export default function CattleManagement({ languageContext }: Props) {
   const [filteredCattle, setFilteredCattle] = useState<Cattle[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(0);
+  const [pageSize, setPageSize] = useState(20);
+  const [totalElements, setTotalElements] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+
   // Master data state
   const [breeds, setBreeds] = useState<Breed[]>([]);
   const [species, setSpecies] = useState<Species[]>([]);
@@ -428,6 +434,16 @@ export default function CattleManagement({ languageContext }: Props) {
     loadMasterData();
   }, []);
 
+  // Reload data when page or page size changes (but skip initial load)
+  const [initialLoad, setInitialLoad] = useState(true);
+  useEffect(() => {
+    if (!initialLoad) {
+      loadCattleData(currentPage, pageSize);
+    } else {
+      setInitialLoad(false);
+    }
+  }, [currentPage, pageSize]);
+
   // Apply filters whenever cattle or filter state changes
   useEffect(() => {
     applyFilters();
@@ -447,33 +463,38 @@ export default function CattleManagement({ languageContext }: Props) {
   }, [showColumnSelector]);
 
   /**
-   * Load all cattle from Gaushala Service
+   * Load cattle from Gaushala Service with pagination
    * Automatically filters by user's gaushalaId if available
    */
-  const loadCattleData = async () => {
+  const loadCattleData = async (page: number = currentPage, size: number = pageSize) => {
     try {
       setLoading(true);
 
-      // Fetch cattle from Gaushala Service (port 8086)
-      const response = await cattleApi.getAllCattle(0, 10000);
+      // Fetch cattle from Gaushala Service (port 8086) with pagination
+      const response = await cattleApi.getAllCattle(page, size, 'createdAt');
 
       if (response.success && response.data) {
         const allCattle = response.data.content || [];
 
-        // Filter by logged-in user's gaushala if gaushalaId is available
-        const ownedCattle = userGaushalaId
-          ? allCattle.filter(c => c.gaushalaId === userGaushalaId)
-          : allCattle;
+        // Note: Backend already filters by user's gaushalaId via JWT
+        // So we don't need client-side filtering
+        console.log(`Loaded ${allCattle.length} cattle records (page ${page + 1} of ${response.data.totalPages})`);
 
-        console.log(`Loaded ${ownedCattle.length} cattle records`);
-        setCattle(ownedCattle);
+        setCattle(allCattle);
+        setTotalElements(response.data.totalElements || 0);
+        setTotalPages(response.data.totalPages || 0);
+        setCurrentPage(page);
       } else {
         console.error('Failed to fetch cattle data:', response.error);
         setCattle([]);
+        setTotalElements(0);
+        setTotalPages(0);
       }
     } catch (error) {
       console.error('Error loading cattle data:', error);
       setCattle([]);
+      setTotalElements(0);
+      setTotalPages(0);
     } finally {
       setLoading(false);
     }
@@ -1654,6 +1675,96 @@ export default function CattleManagement({ languageContext }: Props) {
           <div className="text-center py-12">
             <span className="text-6xl mx-auto mb-4 block">🐄</span>
             <p className="text-gray-500 text-lg">No cattle found matching your filters</p>
+          </div>
+        )}
+
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="mt-6 flex flex-col sm:flex-row items-center justify-between px-4 py-3 border-t border-gray-200">
+            {/* Page size selector */}
+            <div className="flex items-center space-x-2 mb-3 sm:mb-0">
+              <span className="text-sm text-gray-700">Show</span>
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setCurrentPage(0); // Reset to first page when changing page size
+                }}
+                className="border border-gray-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+              >
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+              <span className="text-sm text-gray-700">
+                entries (Total: {totalElements})
+              </span>
+            </div>
+
+            {/* Page navigation */}
+            <div className="flex items-center space-x-2">
+              {/* Previous button */}
+              <button
+                onClick={() => setCurrentPage(Math.max(0, currentPage - 1))}
+                disabled={currentPage === 0}
+                className={`px-3 py-1 rounded-md text-sm font-medium ${
+                  currentPage === 0
+                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                    : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                Previous
+              </button>
+
+              {/* Page numbers */}
+              <div className="flex items-center space-x-1">
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  let pageNum;
+                  if (totalPages <= 5) {
+                    pageNum = i;
+                  } else if (currentPage < 3) {
+                    pageNum = i;
+                  } else if (currentPage > totalPages - 4) {
+                    pageNum = totalPages - 5 + i;
+                  } else {
+                    pageNum = currentPage - 2 + i;
+                  }
+
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => setCurrentPage(pageNum)}
+                      className={`px-3 py-1 rounded-md text-sm font-medium ${
+                        currentPage === pageNum
+                          ? 'bg-green-600 text-white'
+                          : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                      }`}
+                    >
+                      {pageNum + 1}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Next button */}
+              <button
+                onClick={() => setCurrentPage(Math.min(totalPages - 1, currentPage + 1))}
+                disabled={currentPage >= totalPages - 1}
+                className={`px-3 py-1 rounded-md text-sm font-medium ${
+                  currentPage >= totalPages - 1
+                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                    : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                Next
+              </button>
+            </div>
+
+            {/* Page info */}
+            <div className="text-sm text-gray-700 mt-3 sm:mt-0">
+              Page {currentPage + 1} of {totalPages}
+            </div>
           </div>
         )}
       </div>

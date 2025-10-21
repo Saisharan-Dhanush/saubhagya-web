@@ -396,9 +396,9 @@ export const dashboardApi = {
 
 // Cattle Management API - Using gaushala-service directly
 export const cattleApi = {
-  async getAllCattle(page: number = 0, size: number = 100): Promise<ApiResponse<PagedResponse<Cattle>>> {
-    // Use Gaushala Service directly on port 8086
-    return apiCall<PagedResponse<Cattle>>(`/api/v1/gaushala/cattle?page=${page}&size=${size}`);
+  async getAllCattle(page: number = 0, size: number = 20, sortBy: string = 'createdAt'): Promise<ApiResponse<PagedResponse<Cattle>>> {
+    // Use Gaushala Service directly on port 8086 with pagination support
+    return apiCall<PagedResponse<Cattle>>(`/api/v1/gaushala/cattle?page=${page}&size=${size}&sortBy=${sortBy}`);
   },
 
   /**
