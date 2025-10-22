@@ -22,7 +22,8 @@ import {
   Truck,
   FileText,
   Eye,
-  Download
+  Download,
+  Save
 } from 'lucide-react';
 import biogasService, { ProductionBatch, CreateBatchRequest, CompleteBatchRequest } from '../../services/biogasService';
 
@@ -414,7 +415,7 @@ const calculateQualityScore = (batch: ProductionBatch): number => {
 
 const BatchForm: React.FC<{
   batch?: BatchData;
-  onSubmit: (data: Partial<BatchData>) => void;
+  onSubmit: (data: Partial<BatchData>) => Promise<void> | void;
   onCancel: () => void;
   t: (key: string) => string;
 }> = ({ batch, onSubmit, onCancel, t }) => {
@@ -426,14 +427,20 @@ const BatchForm: React.FC<{
     farmerName: batch?.farmerName || '',
     source: batch?.source || ''
   });
+  const [isSaving, setIsSaving] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit({
-      ...formData,
-      volume: parseFloat(formData.volume),
-      methaneContent: parseFloat(formData.methaneContent)
-    });
+    setIsSaving(true);
+    try {
+      await onSubmit({
+        ...formData,
+        volume: parseFloat(formData.volume),
+        methaneContent: parseFloat(formData.methaneContent)
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -514,11 +521,12 @@ const BatchForm: React.FC<{
       </div>
 
       <DialogFooter>
-        <Button type="button" variant="outline" onClick={onCancel}>
+        <Button type="button" variant="outline" onClick={onCancel} disabled={isSaving}>
           {t('cancel')}
         </Button>
-        <Button type="submit">
-          {batch ? t('update') : t('create')}
+        <Button type="submit" className="gap-2" disabled={isSaving}>
+          <Save className="w-4 h-4" />
+          {isSaving ? 'Saving...' : (batch ? t('update') : 'Save Batch')}
         </Button>
       </DialogFooter>
     </form>
@@ -607,17 +615,32 @@ export const BatchManagement: React.FC<BatchManagementProps> = ({ languageContex
       const response = await biogasService.createBatch(request);
       if (response.success) {
         setIsCreateDialogOpen(false);
+        // Show success toast
+        const toast = await import('sonner');
+        toast.toast.success('Batch Saved Successfully!', {
+          description: `Batch created with volume ${data.volume} m³`
+        });
         // Refresh batches
         const refreshResponse = await biogasService.getBatches(clusterId);
         if (refreshResponse.success && refreshResponse.data) {
           setBackendBatches(refreshResponse.data.content);
         }
       } else {
-        setError(response.error || 'Failed to create batch');
+        const errorMsg = response.error || 'Failed to create batch';
+        setError(errorMsg);
+        const toast = await import('sonner');
+        toast.toast.error('Failed to Save Batch', {
+          description: errorMsg
+        });
       }
     } catch (err) {
       console.error('Error creating batch:', err);
-      setError('Network error while creating batch');
+      const errorMsg = 'Network error while creating batch';
+      setError(errorMsg);
+      const toast = await import('sonner');
+      toast.toast.error('Network Error', {
+        description: errorMsg
+      });
     }
   };
 

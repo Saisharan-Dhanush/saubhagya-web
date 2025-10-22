@@ -153,11 +153,13 @@ export interface DisputeResponse {
 }
 
 export interface CreateDisputeRequest {
-  transactionId: string;
+  transactionId: number;
   clusterId: string;
   disputeType: string;
   priority: string;
   description: string;
+  disputeReason: string;
+  externalId?: string;
 }
 
 export interface DisputeResolutionRequest {
