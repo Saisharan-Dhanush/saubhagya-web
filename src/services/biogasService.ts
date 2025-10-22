@@ -276,7 +276,7 @@ export interface DungCollectionRequest {
 // ==========================================
 
 export interface AlertConfigurationRequest {
-  clusterId: string;
+  clusterId: string | number; // Backend expects Long, but we'll convert
   alertType: string;
   severity: string;
   thresholdValue?: number;
@@ -297,20 +297,22 @@ export interface AlertConfigurationResponse {
 }
 
 export interface AlertResponse {
-  id: string;
+  id?: string;
+  alertId?: string; // Backend uses alertId instead of id
   alertConfigId?: string;
   clusterId: string;
   alertType: string;
   severity: string;
   message: string;
-  triggeredAt: string;
+  triggeredAt?: string;
   acknowledgedAt?: string;
   acknowledgedBy?: string;
   resolvedAt?: string;
   resolvedBy?: string;
   status: string;
-  createdAt: string;
-  updatedAt: string;
+  createdAt?: string;
+  updatedAt?: string;
+  escalated?: boolean;
 }
 
 export interface AlertActionRequest {
@@ -1122,7 +1124,11 @@ export const biogasService = {
    */
   async getAlertConfigurations(clusterId: string): Promise<ApiResponse<AlertConfigurationResponse[]>> {
     try {
-      const response = await fetch(`${BIOGAS_SERVICE_URL}/alerts/configurations?clusterId=${clusterId}`, {
+      const url = `${BIOGAS_SERVICE_URL}/alerts/configurations?clusterId=${clusterId}`;
+      console.log('📡 Calling getAlertConfigurations with URL:', url);
+      console.log('📍 ClusterId parameter:', clusterId, 'Type:', typeof clusterId);
+
+      const response = await fetch(url, {
         method: 'GET',
         headers: getAuthHeaders()
       });
@@ -1132,11 +1138,18 @@ export const biogasService = {
       }
 
       const data = await response.json();
-      return {
+      console.log('📦 Raw response from backend (getAlertConfigurations):', data);
+      console.log('📦 Extracted data.data:', data.data);
+      console.log('📦 Is data.data an array?', Array.isArray(data.data));
+
+      const result = {
         success: data.success || true,
         data: data.data || data,
         message: data.message
       };
+
+      console.log('📤 Returning result from getAlertConfigurations:', result);
+      return result;
     } catch (error) {
       console.error('Failed to fetch alert configurations:', error);
       return {
@@ -1152,14 +1165,26 @@ export const biogasService = {
    */
   async createAlertConfiguration(request: AlertConfigurationRequest): Promise<ApiResponse<AlertConfigurationResponse>> {
     try {
+      console.log('📝 Creating alert configuration with request:', request);
+
+      // Convert clusterId to number for backend (backend expects Long)
+      const payload = {
+        ...request,
+        clusterId: typeof request.clusterId === 'string' ? parseInt(request.clusterId, 10) : request.clusterId
+      };
+
+      console.log('📦 Payload after conversion:', payload);
+      console.log('🔢 ClusterId value:', payload.clusterId, 'Type:', typeof payload.clusterId);
+
       const response = await fetch(`${BIOGAS_SERVICE_URL}/alerts/configurations`, {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify(request)
+        body: JSON.stringify(payload)
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        const errorData = await response.json().catch(() => ({ message: response.statusText }));
+        throw new Error(errorData.error || errorData.message || `HTTP ${response.status}: ${response.statusText}`);
       }
 
       const data = await response.json();
@@ -1195,7 +1220,11 @@ export const biogasService = {
       });
       if (severity) params.append('severity', severity);
 
-      const response = await fetch(`${BIOGAS_SERVICE_URL}/alerts/active?${params.toString()}`, {
+      const url = `${BIOGAS_SERVICE_URL}/alerts/active?${params.toString()}`;
+      console.log('📡 Calling getActiveAlerts with URL:', url);
+      console.log('📍 ClusterId parameter:', clusterId, 'Type:', typeof clusterId);
+
+      const response = await fetch(url, {
         method: 'GET',
         headers: getAuthHeaders()
       });
@@ -1543,6 +1572,37 @@ export const biogasService = {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to fetch gaushala'
+      };
+    }
+  },
+
+  /**
+   * Get all biogas clusters
+   * GET /api/v1/admin/cluster-access/clusters
+   */
+  async getAllClusters(): Promise<ApiResponse<any[]>> {
+    try {
+      const response = await fetch(`${BIOGAS_SERVICE_URL}/admin/cluster-access/clusters`, {
+        method: 'GET',
+        headers: getAuthHeaders()
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      return {
+        success: true,
+        data: result.data || [],
+        message: 'Clusters retrieved successfully'
+      };
+    } catch (error) {
+      console.error('Failed to fetch clusters:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to fetch clusters',
+        data: []
       };
     }
   }
