@@ -2,8 +2,27 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
 import { Badge } from '../../components/ui/badge';
-import { AlertTriangle, Camera, Scale, Clock, CheckCircle, XCircle, Eye } from 'lucide-react';
-import biogasService, { DisputeResponse } from '../../services/biogasService';
+import { AlertTriangle, Camera, Scale, Clock, CheckCircle, XCircle, Eye, Save, Plus } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '../../components/ui/dialog';
+import { Input } from '../../components/ui/input';
+import { Label } from '../../components/ui/label';
+import { Textarea } from '../../components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../components/ui/select';
+import biogasService, { DisputeResponse, CreateDisputeRequest } from '../../services/biogasService';
 
 // Backend dispute types - matches Story 11.1 AC-37 to AC-44
 type DisputeStatus = 'OPEN' | 'INVESTIGATING' | 'RESOLVED' | 'ESCALATED';
@@ -42,6 +61,18 @@ const DisputeResolution: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [selectedDispute, setSelectedDispute] = useState<Dispute | null>(null);
   const [filter, setFilter] = useState<'ALL' | 'OPEN' | 'INVESTIGATING' | 'RESOLVED'>('ALL');
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Add Dispute Dialog State
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [newDispute, setNewDispute] = useState<CreateDisputeRequest>({
+    transactionId: 0,
+    clusterId: '1',
+    disputeType: 'WEIGHT_DISCREPANCY',
+    priority: 'MEDIUM',
+    description: '',
+    disputeReason: ''
+  });
 
   // Fetch disputes on mount
   useEffect(() => {
@@ -132,10 +163,13 @@ const DisputeResolution: React.FC = () => {
   };
 
   const escalateDispute = async (disputeId: string, reason: string) => {
+    setIsSaving(true);
     try {
       const backendDispute = backendDisputes.find(d => d.disputeRef === disputeId);
       if (!backendDispute) {
         console.error('Dispute not found:', disputeId);
+        const { toast } = await import('sonner');
+        toast.error('Dispute not found');
         return;
       }
 
@@ -146,18 +180,41 @@ const DisputeResolution: React.FC = () => {
 
       if (response.success) {
         console.log('Dispute escalated:', response.data);
+
+        // Show success toast
+        const { toast } = await import('sonner');
+        toast.success('Dispute Escalation Saved!', {
+          description: `Dispute #${disputeId} has been escalated to higher authority`
+        });
+
         // Refresh disputes list
         const refreshResponse = await biogasService.getDisputes(undefined, undefined, undefined, 0, 100);
         if (refreshResponse.success && refreshResponse.data) {
           setBackendDisputes(refreshResponse.data.content);
         }
+        setSelectedDispute(null);
       } else {
         console.error('Failed to escalate dispute:', response.error);
         setError(response.error || 'Failed to escalate dispute');
+
+        // Show error toast
+        const { toast } = await import('sonner');
+        toast.error('Failed to Save Escalation', {
+          description: response.error || 'An error occurred'
+        });
       }
     } catch (err) {
       console.error('Error escalating dispute:', err);
-      setError(err instanceof Error ? err.message : 'Failed to escalate dispute');
+      const errorMsg = err instanceof Error ? err.message : 'Failed to escalate dispute';
+      setError(errorMsg);
+
+      // Show error toast
+      const { toast } = await import('sonner');
+      toast.error('Failed to Save Escalation', {
+        description: errorMsg
+      });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -166,6 +223,7 @@ const DisputeResolution: React.FC = () => {
   );
 
   const handleResolveDispute = async (disputeId: string, resolution: string, favorFarmer: boolean) => {
+    setIsSaving(true);
     try {
       await resolveDispute(disputeId, {
         resolution,
@@ -173,9 +231,86 @@ const DisputeResolution: React.FC = () => {
         resolvedBy: 'CLUSTER_MANAGER',
         timestamp: new Date().toISOString()
       });
+
+      // Show success toast
+      const { toast } = await import('sonner');
+      toast.success('Dispute Resolution Saved!', {
+        description: `Successfully resolved dispute #${disputeId} in favor of ${favorFarmer ? 'Farmer' : 'IoT'}`
+      });
+
       setSelectedDispute(null);
     } catch (error) {
       console.error('Error resolving dispute:', error);
+
+      // Show error toast
+      const { toast } = await import('sonner');
+      toast.error('Failed to Save Dispute Resolution', {
+        description: error instanceof Error ? error.message : 'An error occurred while saving'
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Handle Add Dispute
+  const handleAddDispute = async () => {
+    // Validation
+    if (!newDispute.transactionId || newDispute.transactionId <= 0 || !newDispute.disputeReason.trim() || !newDispute.description.trim()) {
+      const { toast } = await import('sonner');
+      toast.error('Validation Error', {
+        description: 'Please fill in all required fields. Transaction ID must be a positive number.'
+      });
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      // Generate external ID for the dispute
+      const externalId = `DISP-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      const disputeWithExternalId = { ...newDispute, externalId };
+
+      const response = await biogasService.createDispute(disputeWithExternalId);
+
+      if (response.success && response.data) {
+        // Show success toast
+        const { toast } = await import('sonner');
+        toast.success('Dispute Created!', {
+          description: `Successfully created dispute for transaction #${newDispute.transactionId}`
+        });
+
+        // Refresh disputes list
+        const refreshResponse = await biogasService.getDisputes(undefined, undefined, undefined, 0, 100);
+        if (refreshResponse.success && refreshResponse.data) {
+          setBackendDisputes(refreshResponse.data.content);
+        }
+
+        // Reset form and close dialog
+        setNewDispute({
+          transactionId: 0,
+          clusterId: '1',
+          disputeType: 'WEIGHT_DISCREPANCY',
+          priority: 'MEDIUM',
+          description: '',
+          disputeReason: ''
+        });
+        setIsAddDialogOpen(false);
+      } else {
+        // Show error toast
+        const { toast } = await import('sonner');
+        toast.error('Failed to Create Dispute', {
+          description: response.error || 'An error occurred while creating the dispute'
+        });
+      }
+    } catch (error) {
+      console.error('Error creating dispute:', error);
+
+      // Show error toast
+      const { toast } = await import('sonner');
+      toast.error('Failed to Create Dispute', {
+        description: error instanceof Error ? error.message : 'An error occurred while creating'
+      });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -226,7 +361,7 @@ const DisputeResolution: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center -mt-6">
+      <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Dispute Resolution</h1>
           <p className="text-gray-600 mt-2">
@@ -234,6 +369,109 @@ const DisputeResolution: React.FC = () => {
           </p>
         </div>
         <div className="flex space-x-2">
+          {/* Add Dispute Dialog */}
+          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="default" size="sm" className="flex items-center space-x-2">
+                <Plus className="h-4 w-4" />
+                <span>Add Dispute</span>
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[500px] max-h-[90vh] flex flex-col">
+              <DialogHeader>
+                <DialogTitle>Create New Dispute</DialogTitle>
+                <DialogDescription>
+                  Add a new dispute for transaction verification and resolution
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4 overflow-y-auto flex-1">
+                <div className="grid gap-2">
+                  <Label htmlFor="transactionId">Transaction ID *</Label>
+                  <Input
+                    id="transactionId"
+                    type="number"
+                    placeholder="Enter transaction ID"
+                    value={newDispute.transactionId || ''}
+                    onChange={(e) => setNewDispute({ ...newDispute, transactionId: parseInt(e.target.value) || 0 })}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="clusterId">Cluster ID *</Label>
+                  <Input
+                    id="clusterId"
+                    placeholder="Enter cluster ID"
+                    value={newDispute.clusterId}
+                    onChange={(e) => setNewDispute({ ...newDispute, clusterId: e.target.value })}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="disputeType">Dispute Type *</Label>
+                  <Select
+                    value={newDispute.disputeType}
+                    onValueChange={(value) => setNewDispute({ ...newDispute, disputeType: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select dispute type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="WEIGHT_DISCREPANCY">WEIGHT_DISCREPANCY</SelectItem>
+                      <SelectItem value="PAYMENT_ISSUE">PAYMENT_ISSUE</SelectItem>
+                      <SelectItem value="QUALITY_CONCERN">QUALITY_CONCERN</SelectItem>
+                      <SelectItem value="RATE_DISPUTE">RATE_DISPUTE</SelectItem>
+                      <SelectItem value="DEVICE_MALFUNCTION">DEVICE_MALFUNCTION</SelectItem>
+                      <SelectItem value="PROCESS_VIOLATION">PROCESS_VIOLATION</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="priority">Priority *</Label>
+                  <Select
+                    value={newDispute.priority}
+                    onValueChange={(value) => setNewDispute({ ...newDispute, priority: value })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select priority" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="CRITICAL">CRITICAL</SelectItem>
+                      <SelectItem value="LOW">LOW</SelectItem>
+                      <SelectItem value="MEDIUM">MEDIUM</SelectItem>
+                      <SelectItem value="HIGH">HIGH</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="disputeReason">Dispute Reason *</Label>
+                  <Input
+                    id="disputeReason"
+                    placeholder="Brief reason for the dispute"
+                    value={newDispute.disputeReason}
+                    onChange={(e) => setNewDispute({ ...newDispute, disputeReason: e.target.value })}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="description">Description *</Label>
+                  <Textarea
+                    id="description"
+                    placeholder="Describe the dispute in detail..."
+                    className="min-h-[100px]"
+                    value={newDispute.description}
+                    onChange={(e) => setNewDispute({ ...newDispute, description: e.target.value })}
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsAddDialogOpen(false)} disabled={isSaving}>
+                  Cancel
+                </Button>
+                <Button onClick={handleAddDispute} disabled={isSaving}>
+                  {isSaving ? 'Creating...' : 'Create Dispute'}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* Filter Buttons */}
           {['ALL', 'OPEN', 'INVESTIGATING', 'RESOLVED'].map((status) => (
             <Button
               key={status}
@@ -420,9 +658,10 @@ const DisputeResolution: React.FC = () => {
                           'Resolved in favor of farmer based on evidence review',
                           true
                         )}
+                        disabled={isSaving}
                       >
-                        <CheckCircle className="h-4 w-4" />
-                        <span>Favor Farmer</span>
+                        <Save className="h-4 w-4" />
+                        <span>{isSaving ? 'Saving...' : 'Save - Favor Farmer'}</span>
                       </Button>
                       <Button
                         variant="outline"
@@ -432,17 +671,20 @@ const DisputeResolution: React.FC = () => {
                           'Resolved in favor of IoT reading based on device confidence',
                           false
                         )}
+                        disabled={isSaving}
                       >
-                        <XCircle className="h-4 w-4" />
-                        <span>Favor IoT</span>
+                        <Save className="h-4 w-4" />
+                        <span>{isSaving ? 'Saving...' : 'Save - Favor IoT'}</span>
                       </Button>
                     </div>
                     <Button
                       variant="destructive"
-                      className="w-full"
+                      className="w-full flex items-center justify-center space-x-2"
                       onClick={() => escalateDispute(selectedDispute.id, 'Escalated for manual investigation')}
+                      disabled={isSaving}
                     >
-                      Escalate to Higher Authority
+                      <Save className="h-4 w-4" />
+                      <span>{isSaving ? 'Saving...' : 'Save & Escalate to Higher Authority'}</span>
                     </Button>
                   </div>
                 )}
