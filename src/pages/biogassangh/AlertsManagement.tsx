@@ -28,7 +28,9 @@ import {
   Plus,
   Search,
   Edit,
-  Trash2
+  Trash2,
+  Check,
+  FileCheck
 } from 'lucide-react';
 import { biogasService, AlertResponse, AlertConfigurationResponse, AlertActionRequest, AlertConfigurationRequest } from '../../services/biogasService';
 import { showSuccessToast, showErrorToast, showLoadingToast } from '../../lib/toast';
@@ -45,6 +47,9 @@ interface AlertsManagementProps {
     t: (key: string) => string;
   };
 }
+
+// Alert status type
+type AlertStatus = 'ACTIVE' | 'ACKNOWLEDGED' | 'RESOLVED';
 
 const translations = {
   en: {
@@ -123,11 +128,12 @@ const AlertCard: React.FC<{
   alert: AlertResponse;
   onAcknowledge: (id: string) => Promise<void>;
   onResolve: (id: string, request: AlertActionRequest) => Promise<void>;
-  onUpdate: (alert: AlertResponse) => void;
-  onDelete: (id: string) => Promise<void>;
+  onUpdate?: (alert: AlertResponse) => void;
+  onDelete?: (id: string) => Promise<void>;
   onView?: (alert: AlertResponse) => void;
   t: (key: string) => string;
-}> = ({ alert, onAcknowledge, onResolve, onUpdate, onDelete, onView, t }) => {
+  showDeleteEdit?: boolean; // Only show edit/delete in config tab
+}> = ({ alert, onAcknowledge, onResolve, onUpdate, onDelete, onView, t, showDeleteEdit = false }) => {
   const [acknowledging, setAcknowledging] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -197,28 +203,7 @@ const AlertCard: React.FC<{
             </div>
           </div>
           <div className="flex gap-2 ml-4">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleAcknowledge}
-              disabled={alert.status !== 'ACTIVE' || acknowledging}
-              title="Acknowledge"
-            >
-              {acknowledging ? (
-                <RefreshCw className="w-4 h-4 animate-spin" />
-              ) : (
-                <Check className="w-4 h-4 text-green-600" />
-              )}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => onResolve(alert.alertId || alert.id, {} as AlertActionRequest)}
-              disabled={alert.status === 'RESOLVED'}
-              title="Resolve"
-            >
-              <FileCheck className="w-4 h-4 text-blue-600" />
-            </Button>
+            {/* View Button - Always shown */}
             {onView && (
               <Button
                 size="sm"
@@ -229,27 +214,59 @@ const AlertCard: React.FC<{
                 <Eye className="w-4 h-4" />
               </Button>
             )}
+
+            {/* Resolve Button - Always shown */}
             <Button
               size="sm"
               variant="outline"
-              onClick={() => onUpdate(alert)}
-              title="Update Alert"
+              onClick={() => onResolve(alert.alertId || alert.id, {} as AlertActionRequest)}
+              disabled={alert.status === 'RESOLVED'}
+              title="Resolve Alert"
             >
-              <Edit className="w-4 h-4 text-orange-600" />
+              <FileCheck className="w-4 h-4 text-blue-600" />
             </Button>
+
+            {/* Acknowledge Button - Only for ACTIVE alerts */}
             <Button
               size="sm"
               variant="outline"
-              onClick={handleDelete}
-              disabled={deleting}
-              title="Delete Alert"
+              onClick={handleAcknowledge}
+              disabled={alert.status !== 'ACTIVE' || acknowledging}
+              title="Acknowledge Alert"
             >
-              {deleting ? (
+              {acknowledging ? (
                 <RefreshCw className="w-4 h-4 animate-spin" />
               ) : (
-                <Trash2 className="w-4 h-4 text-red-600" />
+                <Check className="w-4 h-4 text-green-600" />
               )}
             </Button>
+
+            {/* Edit & Delete - Only shown in config/history when explicitly enabled */}
+            {showDeleteEdit && onUpdate && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => onUpdate(alert)}
+                title="Update Alert"
+              >
+                <Edit className="w-4 h-4 text-orange-600" />
+              </Button>
+            )}
+            {showDeleteEdit && onDelete && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleDelete}
+                disabled={deleting}
+                title="Delete Alert"
+              >
+                {deleting ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Trash2 className="w-4 h-4 text-red-600" />
+                )}
+              </Button>
+            )}
           </div>
         </div>
       </CardContent>
@@ -583,12 +600,21 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
       const result = await biogasService.acknowledgeAlert(Number(id));
 
       if (result.success) {
+        console.log('✅ Alert acknowledged:', result.data);
         showSuccessToast('Alert acknowledged successfully');
-        await fetchActiveAlerts();
+
+        // Add small delay to ensure backend has persisted
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        // Reload both active alerts and history to reflect the change
+        console.log('🔄 Reloading alert data...');
+        await loadData();
+        console.log('✅ Data reloaded');
       } else {
         showErrorToast(result.error || 'Failed to acknowledge alert');
       }
     } catch (error: any) {
+      console.error('❌ Acknowledge error:', error);
       showErrorToast(error.message || 'Failed to acknowledge alert');
     }
   };
@@ -604,17 +630,30 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
     try {
       showLoadingToast('Resolving alert...');
 
+      console.log('📝 Resolving alert with form data:', resolveForm);
+
       const result = await biogasService.resolveAlert(Number(resolveAlertId), resolveForm);
 
       if (result.success) {
+        console.log('✅ Alert resolved:', result.data);
         showSuccessToast('Alert resolved successfully');
+
+        // Close dialog and reset form
         setIsResolveDialogOpen(false);
         setResolveForm({ actionTaken: '', resolutionNotes: '' });
-        await fetchActiveAlerts();
+
+        // Add small delay to ensure backend has persisted
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        // Reload both active alerts and history to reflect the change
+        console.log('🔄 Reloading alert data...');
+        await loadData();
+        console.log('✅ Data reloaded');
       } else {
         showErrorToast(result.error || 'Failed to resolve alert');
       }
     } catch (error: any) {
+      console.error('❌ Resolve error:', error);
       showErrorToast(error.message || 'Failed to resolve alert');
     }
   };
@@ -757,9 +796,19 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
   // Keep backward compatibility alias for loadData
   const fetchActiveAlerts = loadData;
 
-  // Filter alerts based on search query
+  // Filter alerts based on search query AND severity filter
   const filteredAlerts = activeAlerts.filter(alert => {
-    if (!searchQuery) return true;
+    // Apply severity filter FIRST
+    if (severityFilter !== 'all' && alert.severity !== severityFilter) {
+      return false;
+    }
+
+    // If no search query, return true (show the alert if it passed severity filter)
+    if (!searchQuery) {
+      return true;
+    }
+
+    // Apply search query filter
     const query = searchQuery.toLowerCase();
     return (
       alert.message?.toLowerCase().includes(query) ||
@@ -769,8 +818,8 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
     );
   });
 
-  const criticalAlerts = filteredAlerts.filter(a => a.severity === 'CRITICAL');
-  const warningAlerts = filteredAlerts.filter(a => a.severity === 'WARNING');
+  const criticalAlerts = activeAlerts.filter(a => a.severity === 'CRITICAL');
+  const warningAlerts = activeAlerts.filter(a => a.severity === 'WARNING');
   const systemStatus = criticalAlerts.length > 0 ? 'critical' :
                      warningAlerts.length > 0 ? 'warning' : 'normal';
 
@@ -971,10 +1020,9 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
                   alert={alert}
                   onAcknowledge={handleAcknowledgeAlert}
                   onResolve={handleResolveAlert}
-                  onUpdate={handleUpdateAlert}
-                  onDelete={handleDeleteAlert}
                   onView={handleViewAlertDetails}
                   t={t}
+                  showDeleteEdit={false}
                 />
               ))
             )}
@@ -1003,10 +1051,9 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
                       alert={alert}
                       onAcknowledge={handleAcknowledgeAlert}
                       onResolve={handleResolveAlert}
-                      onUpdate={handleUpdateAlert}
-                      onDelete={handleDeleteAlert}
                       onView={handleViewAlertDetails}
                       t={t}
+                      showDeleteEdit={false}
                     />
                   ))
                 )}
