@@ -1250,66 +1250,6 @@ export const biogasService = {
     }
   },
 
-  /**
-   * Acknowledge alert (AC-63)
-   * PUT /api/v1/alerts/{id}/acknowledge
-   */
-  async acknowledgeAlert(alertId: string): Promise<ApiResponse<AlertResponse>> {
-    try {
-      const response = await fetch(`${BIOGAS_SERVICE_URL}/alerts/${alertId}/acknowledge`, {
-        method: 'PUT',
-        headers: getAuthHeaders()
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      return {
-        success: data.success || true,
-        data: data.data || data,
-        message: data.message
-      };
-    } catch (error) {
-      console.error('Failed to acknowledge alert:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to acknowledge alert'
-      };
-    }
-  },
-
-  /**
-   * Resolve alert with action (AC-64)
-   * PUT /api/v1/alerts/{id}/resolve
-   */
-  async resolveAlert(alertId: string, request: AlertActionRequest): Promise<ApiResponse<AlertResponse>> {
-    try {
-      const response = await fetch(`${BIOGAS_SERVICE_URL}/alerts/${alertId}/resolve`, {
-        method: 'PUT',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(request)
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      return {
-        success: data.success || true,
-        data: data.data || data,
-        message: data.message
-      };
-    } catch (error) {
-      console.error('Failed to resolve alert:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to resolve alert'
-      };
-    }
-  },
 
   /**
    * Get alert history (AC-67)
@@ -1351,6 +1291,254 @@ export const biogasService = {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to fetch alert history'
+      };
+    }
+  },
+
+  /**
+   * Trigger alert (create active alert directly)
+   * POST /api/v1/alerts/trigger
+   */
+  async triggerAlert(request: {
+    clusterId: string;
+    alertType: string;
+    severity: string;
+    message: string;
+  }): Promise<ApiResponse<AlertResponse>> {
+    try {
+      console.log('📝 Triggering new alert:', request);
+
+      const response = await fetch(`${BIOGAS_SERVICE_URL}/alerts/trigger`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(request)
+      });
+
+      console.log('📥 Trigger alert response status:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Trigger alert failed:', errorText);
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
+      const data = await response.json();
+      console.log('✅ Alert triggered successfully:', data);
+
+      return {
+        success: data.success || true,
+        data: data.data || data,
+        message: data.message || 'Alert triggered successfully'
+      };
+    } catch (error) {
+      console.error('Failed to trigger alert:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to trigger alert'
+      };
+    }
+  },
+
+  /**
+   * Update alert message
+   * PUT /api/v1/alerts/{id}
+   */
+  async updateAlert(id: number, request: {
+    clusterId: string;
+    alertType: string;
+    severity: string;
+    message: string;
+  }): Promise<ApiResponse<AlertResponse>> {
+    try {
+      const response = await fetch(`${BIOGAS_SERVICE_URL}/alerts/${id}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(request)
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+      }
+
+      const data = await response.json();
+      return {
+        success: data.success || true,
+        data: data.data || data,
+        message: data.message || 'Alert updated successfully'
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to update alert'
+      };
+    }
+  },
+
+  /**
+   * Delete alert message
+   * DELETE /api/v1/alerts/{id}
+   */
+  async deleteAlert(id: number): Promise<ApiResponse<void>> {
+    try {
+      const response = await fetch(`${BIOGAS_SERVICE_URL}/alerts/${id}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+      }
+
+      return {
+        success: true,
+        message: 'Alert deleted successfully'
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to delete alert'
+      };
+    }
+  },
+
+  /**
+   * Acknowledge alert
+   * PUT /api/v1/alerts/{id}/acknowledge
+   */
+  async acknowledgeAlert(id: number): Promise<ApiResponse<AlertResponse>> {
+    try {
+      const response = await fetch(`${BIOGAS_SERVICE_URL}/alerts/${id}/acknowledge`, {
+        method: 'PUT',
+        headers: getAuthHeaders()
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+      }
+
+      const data = await response.json();
+      return {
+        success: data.success || true,
+        data: data.data || data,
+        message: data.message || 'Alert acknowledged successfully'
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to acknowledge alert'
+      };
+    }
+  },
+
+  /**
+   * Resolve alert with action details
+   * PUT /api/v1/alerts/{id}/resolve
+   */
+  async resolveAlert(id: number, request: AlertActionRequest): Promise<ApiResponse<AlertResponse>> {
+    try {
+      const response = await fetch(`${BIOGAS_SERVICE_URL}/alerts/${id}/resolve`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(request)
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+      }
+
+      const data = await response.json();
+      return {
+        success: data.success || true,
+        data: data.data || data,
+        message: data.message || 'Alert resolved successfully'
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to resolve alert'
+      };
+    }
+  },
+
+  /**
+   * Update alert configuration
+   * PUT /api/v1/alerts/configurations/{id}
+   */
+  async updateAlertConfiguration(id: number, request: AlertConfigurationRequest): Promise<ApiResponse<AlertConfigurationResponse>> {
+    try {
+      const response = await fetch(`${BIOGAS_SERVICE_URL}/alerts/configurations/${id}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(request)
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+      }
+
+      const data = await response.json();
+      return {
+        success: data.success || true,
+        data: data.data || data,
+        message: data.message || 'Alert configuration updated successfully'
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to update alert configuration'
+      };
+    }
+  },
+
+  /**
+   * Delete alert configuration
+   * DELETE /api/v1/alerts/configurations/{id}
+   */
+  async deleteAlertConfiguration(id: number): Promise<ApiResponse<void>> {
+    try {
+      const response = await fetch(`${BIOGAS_SERVICE_URL}/alerts/configurations/${id}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+      }
+
+      return {
+        success: true,
+        message: 'Alert configuration deleted successfully'
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to delete alert configuration'
+      };
+    }
+  },
+
+  // Toggle alert configuration enabled/disabled status
+  async toggleAlertConfiguration(id: number): Promise<ApiResponse<AlertConfigurationResponse>> {
+    try {
+      const response = await fetch(`${BIOGAS_SERVICE_URL}/alerts/configurations/${id}/toggle`, {
+        method: 'PUT',
+        headers: getAuthHeaders()
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+      }
+
+      const data = await response.json();
+      return {
+        success: data.success || true,
+        data: data.data || data,
+        message: data.message || 'Alert configuration status updated'
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to toggle alert configuration'
       };
     }
   },
