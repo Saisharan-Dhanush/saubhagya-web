@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
 import { Badge } from '../../components/ui/badge';
 import { Button } from '../../components/ui/button';
@@ -10,6 +10,8 @@ import { Alert, AlertDescription } from '../../components/ui/alert';
 import { Progress } from '../../components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/ui/tabs';
 import biogasService, { DungCollectionRequest } from '../../services/biogasService';
+import { authService } from '../../services/authService';
+import { gauShalaApi } from '../../services/gaushala/api';
 import {
   Camera,
   Scale,
@@ -1401,6 +1403,9 @@ const getDefaultRateForGrade = (grade: string): number => {
 };
 
 export const TransactionEntry: React.FC<TransactionEntryProps> = ({ languageContext }) => {
+  // CHECK ROLE - Only BIOGAS_OPERATOR can access this page
+  const isBiogasOperator = authService.canCreateTransactions();
+
   const [activeTab, setActiveTab] = useState('new');
 
   // Enhanced form state with additional fields
@@ -1426,11 +1431,85 @@ export const TransactionEntry: React.FC<TransactionEntryProps> = ({ languageCont
   const [capturedPhotos, setCapturedPhotos] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [realTransactions, setRealTransactions] = useState<any[]>([]);
+  const [isLoadingTransactions, setIsLoadingTransactions] = useState(false);
+  const [gaushalas, setGaushalas] = useState<any[]>([]);
+  const [isLoadingGaushalas, setIsLoadingGaushalas] = useState(false);
+  const [selectedGaushala, setSelectedGaushala] = useState<any>(null);
+  const [clusters, setClusters] = useState<any[]>([]);
+  const [isLoadingClusters, setIsLoadingClusters] = useState(false);
 
   const lang = languageContext?.language || 'en';
   const t = (key: string): string => {
     return languageContext?.t(key) || translations[lang][key as keyof typeof translations[typeof lang]] || key;
   };
+
+  // Fetch real transactions from API
+  useEffect(() => {
+    const fetchTransactions = async () => {
+      setIsLoadingTransactions(true);
+      try {
+        const response = await biogasService.listDungCollections(
+          undefined, // clusterId
+          undefined, // gaushalaId
+          undefined, // paymentStatus
+          undefined, // startDate
+          undefined, // endDate
+          0,         // page
+          100        // size
+        );
+        if (response.success && response.data) {
+          setRealTransactions(response.data.content || []);
+        }
+      } catch (error) {
+        console.error('Failed to fetch transactions:', error);
+      } finally {
+        setIsLoadingTransactions(false);
+      }
+    };
+
+    fetchTransactions();
+  }, []);
+
+  // Fetch gaushalas for dropdown selection
+  useEffect(() => {
+    const fetchGaushalas = async () => {
+      setIsLoadingGaushalas(true);
+      try {
+        const response = await gauShalaApi.gaushalaAccess.getAllGaushalas();
+        if (response.success && response.data) {
+          setGaushalas(response.data);
+        }
+      } catch (error) {
+        console.error('Failed to fetch gaushalas:', error);
+      } finally {
+        setIsLoadingGaushalas(false);
+      }
+    };
+
+    fetchGaushalas();
+  }, []);
+
+  // Fetch user's accessible clusters for dropdown selection
+  useEffect(() => {
+    const fetchClusters = async () => {
+      setIsLoadingClusters(true);
+      try {
+        const response = await biogasService.getMyAccessibleClusters();
+        if (response.success && response.data) {
+          setClusters(response.data);
+        } else if (response.error) {
+          console.error('Failed to fetch clusters:', response.error);
+        }
+      } catch (error) {
+        console.error('Failed to fetch clusters:', error);
+      } finally {
+        setIsLoadingClusters(false);
+      }
+    };
+
+    fetchClusters();
+  }, []);
 
   const handleWeightCaptured = (weight: number) => {
     setFormData(prev => ({ ...prev, measuredWeight: weight }));
@@ -1438,6 +1517,22 @@ export const TransactionEntry: React.FC<TransactionEntryProps> = ({ languageCont
 
   const handlePhotoAdded = (photo: string) => {
     setCapturedPhotos(prev => [...prev, photo]);
+  };
+
+  const handleGaushalaSelect = (gaushalaId: string) => {
+    const selected = gaushalas.find(g => g.id?.toString() === gaushalaId);
+    if (selected) {
+      setSelectedGaushala(selected);
+      setFormData(prev => ({
+        ...prev,
+        gaushalaId: gaushalaId,
+        farmerId: selected.farmerId || selected.ownerId || `FARM-${gaushalaId}`,
+        farmerName: selected.ownerName || selected.name || '',
+        phoneNumber: selected.contactNumber || selected.phoneNumber || '',
+        location: selected.address || selected.location || '',
+        farmerAadhaar: selected.ownerAadhaar || ''
+      }));
+    }
   };
 
   const calculateTotalAmount = () => {
@@ -1506,6 +1601,15 @@ export const TransactionEntry: React.FC<TransactionEntryProps> = ({ languageCont
 
       if (response.success) {
         setSaveSuccess(true);
+
+        // Reload transactions to update statistics
+        const updatedResponse = await biogasService.listDungCollections(
+          undefined, undefined, undefined, undefined, undefined, 0, 100
+        );
+        if (updatedResponse.success && updatedResponse.data) {
+          setRealTransactions(updatedResponse.data.content || []);
+        }
+
         setTimeout(() => {
           setSaveSuccess(false);
           // Reset form
@@ -1541,17 +1645,65 @@ export const TransactionEntry: React.FC<TransactionEntryProps> = ({ languageCont
     }
   };
 
-  const recentTransactions = transactions.slice(0, 10);
-  const pendingTransactions = transactions.filter(t => t.status === 'pending' || t.status === 'payment_pending');
-  const todaysTransactions = transactions.filter(t =>
-    new Date(t.measurementDate).toDateString() === new Date().toDateString()
+  // Calculate statistics from real API data
+  const recentTransactions = realTransactions.slice(0, 10);
+  const todaysTransactions = realTransactions.filter(t =>
+    new Date(t.collectionDate).toDateString() === new Date().toDateString()
   );
-  const verifiedTransactions = transactions.filter(t => t.status === 'verified');
+  const pendingTransactions = realTransactions.filter(t =>
+    t.paymentStatus === 'PENDING' || t.paymentStatus === 'QUEUED'
+  );
+  const verifiedTransactions = realTransactions.filter(t =>
+    t.paymentStatus === 'COMPLETED' || t.transactionStatus === 'ACTIVE'
+  );
+
+  // Show access denied if not biogas operator
+  if (!isBiogasOperator) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle className="flex items-center text-red-600">
+              <Shield className="h-5 w-5 mr-2" />
+              Access Denied
+            </CardTitle>
+            <CardDescription>
+              Only Biogas Operators can create transactions
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-gray-600">
+              You are logged in as: <strong>{authService.getRoleDisplayName()}</strong>
+            </p>
+            <p className="text-sm text-gray-600 mt-2">
+              This page is restricted to Biogas Operators who record dung collection from Gaushalas.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
+      {/* Role Indicator Banner */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center">
+            <Shield className="h-5 w-5 text-blue-600 mr-2" />
+            <div>
+              <p className="text-blue-900 font-semibold">Biogas Operator Mode</p>
+              <p className="text-blue-700 text-sm">Recording dung collection from Gaushalas</p>
+            </div>
+          </div>
+          <Badge className="bg-blue-600">
+            {authService.getRoleDisplayName()}
+          </Badge>
+        </div>
+      </div>
+
       {/* Header */}
-      <div className="flex items-center justify-between -mt-6">
+      <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">{t('title')}</h1>
           <p className="text-muted-foreground">{t('subtitle')}</p>
@@ -1576,7 +1728,7 @@ export const TransactionEntry: React.FC<TransactionEntryProps> = ({ languageCont
           <CardContent>
             <div className="text-2xl font-bold">{todaysTransactions.length}</div>
             <p className="text-xs text-muted-foreground">
-              {todaysTransactions.reduce((sum, t) => sum + t.measuredWeight, 0).toFixed(1)} kg total
+              {todaysTransactions.reduce((sum, t) => sum + (t.weightKg || 0), 0).toFixed(1)} kg total
             </p>
           </CardContent>
         </Card>
@@ -1614,7 +1766,7 @@ export const TransactionEntry: React.FC<TransactionEntryProps> = ({ languageCont
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              ₹{transactions.reduce((sum, t) => sum + t.totalAmount, 0).toFixed(2)}
+              ₹{realTransactions.reduce((sum, t) => sum + (t.totalAmount || 0), 0).toFixed(2)}
             </div>
             <p className="text-xs text-muted-foreground">
               All transactions
@@ -1644,73 +1796,65 @@ export const TransactionEntry: React.FC<TransactionEntryProps> = ({ languageCont
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="clusterId">Cluster ID *</Label>
-                    <Input
-                      id="clusterId"
-                      value={formData.clusterId}
-                      onChange={(e) => setFormData(prev => ({ ...prev, clusterId: e.target.value }))}
-                      placeholder="Enter UUID"
-                      required
-                    />
+                    <Label htmlFor="clusterId">Select Cluster *</Label>
+                    {isLoadingClusters ? (
+                      <div className="text-sm text-muted-foreground">Loading clusters...</div>
+                    ) : (
+                      <Select
+                        value={formData.clusterId}
+                        onValueChange={(value) => setFormData(prev => ({ ...prev, clusterId: value }))}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select cluster..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {clusters.length === 0 ? (
+                            <SelectItem value="none" disabled>No clusters assigned</SelectItem>
+                          ) : (
+                            clusters.map((cluster) => (
+                              <SelectItem
+                                key={cluster.id || cluster.clusterId}
+                                value={(cluster.id || cluster.clusterId)?.toString() || ''}
+                              >
+                                {cluster.clusterName || cluster.name || `Cluster #${cluster.id}`}
+                                {cluster.district && cluster.state && ` - ${cluster.district}, ${cluster.state}`}
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                    )}
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="gaushalaId">Gaushala ID *</Label>
-                    <Input
-                      id="gaushalaId"
-                      type="number"
-                      value={formData.gaushalaId}
-                      onChange={(e) => setFormData(prev => ({ ...prev, gaushalaId: e.target.value }))}
-                      placeholder="Enter number"
-                      required
-                    />
+                    <Label htmlFor="gaushalaId">Select Gaushala *</Label>
+                    {isLoadingGaushalas ? (
+                      <div className="text-sm text-muted-foreground">Loading gaushalas...</div>
+                    ) : (
+                      <Select
+                        value={formData.gaushalaId}
+                        onValueChange={handleGaushalaSelect}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Search and select gaushala..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {gaushalas.length === 0 ? (
+                            <SelectItem value="none" disabled>No gaushalas found</SelectItem>
+                          ) : (
+                            gaushalas.map((gaushala) => (
+                              <SelectItem
+                                key={gaushala.id}
+                                value={gaushala.id?.toString() || ''}
+                              >
+                                {gaushala.name || gaushala.gaushalaName || `Gaushala #${gaushala.id}`}
+                                {gaushala.location && ` - ${gaushala.location}`}
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                    )}
                   </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="farmerId">{t('farmerId')}</Label>
-                    <Input
-                      id="farmerId"
-                      value={formData.farmerId}
-                      onChange={(e) => setFormData(prev => ({ ...prev, farmerId: e.target.value }))}
-                      placeholder="FARM-001"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="farmerName">{t('farmerName')}</Label>
-                    <Input
-                      id="farmerName"
-                      value={formData.farmerName}
-                      onChange={(e) => setFormData(prev => ({ ...prev, farmerName: e.target.value }))}
-                      placeholder="राम कुमार"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="farmerAadhaar">{t('farmerAadhaar')}</Label>
-                  <Input
-                    id="farmerAadhaar"
-                    value={formData.farmerAadhaar}
-                    onChange={(e) => setFormData(prev => ({ ...prev, farmerAadhaar: e.target.value }))}
-                    placeholder="****-****-1234"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="location">{t('location')}</Label>
-                  <Input
-                    id="location"
-                    value={formData.location}
-                    onChange={(e) => setFormData(prev => ({ ...prev, location: e.target.value }))}
-                    placeholder="Village, District"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="phoneNumber">{t('phoneNumber')}</Label>
-                  <Input
-                    id="phoneNumber"
-                    value={formData.phoneNumber}
-                    onChange={(e) => setFormData(prev => ({ ...prev, phoneNumber: e.target.value }))}
-                    placeholder="+91 98765 43210"
-                  />
                 </div>
               </CardContent>
             </Card>
@@ -1967,8 +2111,8 @@ export const TransactionEntry: React.FC<TransactionEntryProps> = ({ languageCont
                           <Smartphone className="w-3 h-3" />
                           IoT Device
                         </div>
-                        <div>{transaction.iotVerification.deviceName}</div>
-                        <div className="text-muted-foreground">{transaction.iotVerification.deviceId}</div>
+                        <div>{transaction.iotVerification?.deviceName || 'N/A'}</div>
+                        <div className="text-muted-foreground">{transaction.iotVerification?.deviceId || 'N/A'}</div>
                       </div>
                       <div>
                         <div className="font-medium flex items-center gap-1">
@@ -1976,14 +2120,14 @@ export const TransactionEntry: React.FC<TransactionEntryProps> = ({ languageCont
                           Verification Score
                         </div>
                         <div className="text-green-600 font-bold">
-                          {transaction.iotVerification.verification_score.toFixed(1)}%
+                          {transaction.iotVerification?.verification_score?.toFixed(1) || 'N/A'}%
                         </div>
                       </div>
                       <div>
                         <div className="font-medium">Batch Reference</div>
-                        <div>{transaction.batchReference.batchId}</div>
+                        <div>{transaction.batchReference?.batchId || 'N/A'}</div>
                         <div className="text-muted-foreground">
-                          Yield: {transaction.batchReference.expectedYield}L
+                          Yield: {transaction.batchReference?.expectedYield || 'N/A'}L
                         </div>
                       </div>
                       <div>
@@ -1991,7 +2135,7 @@ export const TransactionEntry: React.FC<TransactionEntryProps> = ({ languageCont
                           <QrCode className="w-3 h-3" />
                           QR Code
                         </div>
-                        <div className="font-mono">{transaction.qrCode}</div>
+                        <div className="font-mono">{transaction.qrCode || 'N/A'}</div>
                       </div>
                     </div>
 
@@ -1999,29 +2143,33 @@ export const TransactionEntry: React.FC<TransactionEntryProps> = ({ languageCont
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 text-xs">
                       <div>
                         <div className="font-medium mb-1">Transport Details</div>
-                        <div>{transaction.transportDetails.vehicleNumber}</div>
-                        <div>{transaction.transportDetails.driverName}</div>
+                        <div>{transaction.transportDetails?.vehicleNumber || 'N/A'}</div>
+                        <div>{transaction.transportDetails?.driverName || 'N/A'}</div>
                       </div>
                       <div>
                         <div className="font-medium mb-1">Quality Inspector</div>
-                        <div>{transaction.inspector.name}</div>
+                        <div>{transaction.inspector?.name || 'N/A'}</div>
                         <div className="flex items-center gap-1">
-                          {transaction.inspector.signature ? (
+                          {transaction.inspector?.signature ? (
                             <CheckCircle className="w-3 h-3 text-green-600" />
                           ) : (
                             <Clock className="w-3 h-3 text-orange-600" />
                           )}
-                          {transaction.inspector.signature ? 'Signed' : 'Pending Signature'}
+                          {transaction.inspector?.signature ? 'Signed' : 'Pending Signature'}
                         </div>
                       </div>
                       <div>
                         <div className="font-medium mb-1">Certificates</div>
                         <div className="flex flex-wrap gap-1">
-                          {transaction.certificates.map((cert, index) => (
-                            <Badge key={index} variant="outline" className="text-xs">
-                              {cert}
-                            </Badge>
-                          ))}
+                          {transaction.certificates?.length > 0 ? (
+                            transaction.certificates.map((cert, index) => (
+                              <Badge key={index} variant="outline" className="text-xs">
+                                {cert}
+                              </Badge>
+                            ))
+                          ) : (
+                            <span className="text-xs text-muted-foreground">N/A</span>
+                          )}
                         </div>
                       </div>
                     </div>

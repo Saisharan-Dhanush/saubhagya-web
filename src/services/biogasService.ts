@@ -230,13 +230,29 @@ export interface BankStatementUploadResponse {
   message: string;
 }
 
+// ==================== CLUSTER TYPES ====================
+
+export interface ClusterResponse {
+  id: number;
+  clusterId: number;
+  clusterCode: string;
+  clusterName: string;
+  name: string;
+  locationAddress?: string;
+  district?: string;
+  state?: string;
+  pincode?: string;
+  capacity?: number;
+  status?: string;
+}
+
 // ==================== DUNG COLLECTION / TRANSACTION HISTORY TYPES ====================
 
 export interface DungCollectionResponse {
   id: string;
   transactionRef: string;
   clusterId: string;
-  gaushalaId: number;
+  gaushalaId: number; // Long type from backend
   collectionDate: string;
   weightKg: number;
   qualityGrade: 'A' | 'B' | 'C' | 'D';
@@ -263,7 +279,7 @@ export interface DungCollectionPageResponse {
 
 export interface DungCollectionRequest {
   clusterId: string;
-  gaushalaId: number;
+  gaushalaId: number; // Long type from backend
   collectionDate: string; // ISO datetime string
   weightKg: number;
   qualityGrade: 'A' | 'B' | 'C' | 'D';
@@ -1004,9 +1020,11 @@ export const biogasService = {
   /**
    * List dung collections (AC-12) - Transaction History
    * GET /api/v1/dung-collections
+   * Role-based filtering: Gaushala Managers see only their own transactions
    */
   async listDungCollections(
     clusterId?: string,
+    gaushalaId?: number,
     paymentStatus?: string,
     startDate?: string,
     endDate?: string,
@@ -1021,6 +1039,9 @@ export const biogasService = {
 
       if (clusterId) {
         params.append('clusterId', clusterId);
+      }
+      if (gaushalaId !== undefined) {
+        params.append('gaushalaId', gaushalaId.toString());
       }
       if (paymentStatus) {
         params.append('paymentStatus', paymentStatus);
@@ -1051,6 +1072,44 @@ export const biogasService = {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to fetch dung collections'
+      };
+    }
+  },
+
+  /**
+   * Get dung collections for the authenticated user's gaushala
+   * GET /api/v1/dung-collections/my-gaushala
+   * Automatically filters by the logged-in user's gaushala (extracted from JWT)
+   */
+  async getMyGaushalaCollections(
+    page = 0,
+    size = 20
+  ): Promise<ApiResponse<DungCollectionPageResponse>> {
+    try {
+      const params = new URLSearchParams({
+        page: page.toString(),
+        size: size.toString()
+      });
+
+      const response = await fetch(`${BIOGAS_SERVICE_URL}/dung-collections/my-gaushala?${params.toString()}`, {
+        method: 'GET',
+        headers: getAuthHeaders()
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return {
+        success: data.success || true,
+        data: data.data || data
+      };
+    } catch (error) {
+      console.error('Failed to fetch my gaushala collections:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to fetch my gaushala collections'
       };
     }
   },
@@ -1112,6 +1171,38 @@ export const biogasService = {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to create dung collection'
+      };
+    }
+  },
+
+  /**
+   * Update an existing dung collection transaction (AC-14)
+   * PUT /api/v1/dung-collections/{id}
+   */
+  async updateDungCollection(id: number, request: DungCollectionRequest): Promise<ApiResponse<DungCollectionResponse>> {
+    try {
+      const response = await fetch(`${BIOGAS_SERVICE_URL}/dung-collections/${id}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(request)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: response.statusText }));
+        throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return {
+        success: data.success || true,
+        data: data.data || data,
+        message: data.message || 'Collection updated successfully'
+      };
+    } catch (error) {
+      console.error('Failed to update dung collection:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to update dung collection'
       };
     }
   },
@@ -1766,8 +1857,12 @@ export const biogasService = {
     }
   },
 
+  // ==========================================
+  // Admin Cluster Management APIs
+  // ==========================================
+
   /**
-   * Get all biogas clusters
+   * Get all biogas clusters (Admin)
    * GET /api/v1/admin/cluster-access/clusters
    */
   async getAllClusters(): Promise<ApiResponse<any[]>> {
@@ -1793,6 +1888,134 @@ export const biogasService = {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to fetch clusters',
         data: []
+      };
+    }
+  },
+
+  // ==========================================
+  // User Cluster Access APIs
+  // ==========================================
+
+  /**
+   * Get clusters accessible by current user
+   * GET /api/v1/user/clusters
+   *
+   * Returns all clusters the authenticated user has been granted access to.
+   * Used for populating cluster selection dropdowns.
+   */
+  async getMyAccessibleClusters(): Promise<ApiResponse<ClusterResponse[]>> {
+    try {
+      const response = await fetch(`${BIOGAS_SERVICE_URL}/user/clusters`, {
+        method: 'GET',
+        headers: getAuthHeaders()
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      // Backend returns { userId, totalClusters, clusters: [...] }
+      return {
+        success: true,
+        data: data.clusters || [],
+        message: data.message
+      };
+    } catch (error) {
+      console.error('Failed to fetch accessible clusters:', error);
+      return {
+        success: false,
+        data: [],
+        error: error instanceof Error ? error.message : 'Failed to fetch accessible clusters'
+      };
+    }
+  },
+
+  /**
+   * Check if current user has access to a specific cluster
+   * GET /api/v1/user/clusters/{clusterId}/check-access
+   */
+  async checkMyClusterAccess(clusterId: number): Promise<ApiResponse<{ hasAccess: boolean }>> {
+    try {
+      const response = await fetch(`${BIOGAS_SERVICE_URL}/user/clusters/${clusterId}/check-access`, {
+        method: 'GET',
+        headers: getAuthHeaders()
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return {
+        success: true,
+        data: { hasAccess: data.hasAccess }
+      };
+    } catch (error) {
+      console.error('Failed to check cluster access:', error);
+      return {
+        success: false,
+        data: { hasAccess: false },
+        error: error instanceof Error ? error.message : 'Failed to check cluster access'
+      };
+    }
+  },
+
+  /**
+   * Update dung collection payment status
+   * PUT /api/v1/dung-collections/{id}
+   */
+  async updateDungCollectionPaymentStatus(
+    id: string,
+    paymentStatus: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'QUEUED',
+    paymentMethod?: 'UPI' | 'CASH' | 'BANK_TRANSFER',
+    paymentRef?: string
+  ): Promise<ApiResponse<DungCollectionResponse>> {
+    try {
+      // Fetch current collection data first
+      const currentData = await this.getDungCollectionById(id);
+      if (!currentData.success || !currentData.data) {
+        throw new Error('Failed to fetch current collection data');
+      }
+
+      const updateRequest: DungCollectionRequest = {
+        clusterId: currentData.data.clusterId,
+        gaushalaId: currentData.data.gaushalaId,
+        collectionDate: currentData.data.collectionDate,
+        weightKg: currentData.data.weightKg,
+        qualityGrade: currentData.data.qualityGrade,
+        qualityNotes: currentData.data.qualityNotes,
+        ratePerKg: currentData.data.ratePerKg,
+        paymentMethod: (paymentMethod || currentData.data.paymentMethod) as 'UPI' | 'CASH' | 'BANK_TRANSFER',
+        paymentRef: paymentRef || currentData.data.paymentRef,
+        paymentStatus: paymentStatus
+      };
+
+      console.log('Sending update request with payment status:', updateRequest);
+
+      const response = await fetch(`${BIOGAS_SERVICE_URL}/dung-collections/${id}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(updateRequest)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: response.statusText }));
+        throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return {
+        success: data.success || true,
+        data: data.data || data,
+        message: data.message || 'Payment status updated successfully'
+      };
+    } catch (error) {
+      console.error('Failed to update payment status:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to update payment status'
       };
     }
   }
