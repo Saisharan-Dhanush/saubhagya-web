@@ -238,6 +238,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         appType: 'admin', // Using admin app type as transport module is integrated there
         permissions: ROLE_PERMISSIONS.transporter,
         lastAccess: new Date()
+      },
+      '+919988776644': {
+        id: 'test-user-001',
+        phone: '+919988776644',
+        email: 'test@saubhagya.com',
+        name: 'Test User',
+        role: 'cluster_manager',
+        department: 'Cluster Operations',
+        appType: 'biogassangh',
+        permissions: ROLE_PERMISSIONS.cluster_manager,
+        lastAccess: new Date()
       }
     }
 
@@ -248,7 +259,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Simple password validation for demo (in real app, this would be properly hashed)
     // Accept multiple valid passwords for different user types
-    const validPasswords = ['password123', 'fieldworker123', 'admin123', 'Farmer@123'];
+    const validPasswords = ['password123', 'fieldworker123', 'admin123', 'Farmer@123', 'Test@123'];
     if (!validPasswords.includes(password)) {
       throw new Error('Invalid phone number or password')
     }

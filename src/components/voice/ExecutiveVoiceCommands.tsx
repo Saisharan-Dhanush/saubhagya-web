@@ -177,7 +177,7 @@ export default function ExecutiveVoiceCommands({ onCommandResult, className = ''
 
   // Command handlers
   const handleRevenueAnalysis = async (): Promise<VoiceAnalyticsResponse> => {
-    const revenueKPI = kpis.find(kpi => kpi.id === 'revenue');
+    const revenueKPI = kpis.find((kpi: { id: string; }) => kpi.id === 'revenue');
     const currentRevenue = revenueKPI?.value || 0;
     const growth = revenueKPI?.change || 0;
     const predicted = predictiveAnalytics.revenue.predicted12Month;
@@ -206,12 +206,12 @@ export default function ExecutiveVoiceCommands({ onCommandResult, className = ''
 
   const handleKPISummary = async (): Promise<VoiceAnalyticsResponse> => {
     const topKPIs = kpis
-      .sort((a, b) => b.change - a.change)
+      .sort((a: { change: number; }, b: { change: number; }) => b.change - a.change)
       .slice(0, 3);
 
     const summary = language === 'hi'
-      ? `शीर्ष प्रदर्शनकारी KPIs: ${topKPIs.map(kpi => `${kpi.name} ${kpi.change > 0 ? '+' : ''}${kpi.change.toFixed(1)}%`).join(', ')}। समग्र प्रदर्शन ${calculatedAnalytics?.performanceScore.overall.toFixed(1)}% है।`
-      : `Top performing KPIs: ${topKPIs.map(kpi => `${kpi.name} ${kpi.change > 0 ? '+' : ''}${kpi.change.toFixed(1)}%`).join(', ')}. Overall performance is ${calculatedAnalytics?.performanceScore.overall.toFixed(1)}%.`;
+      ? `शीर्ष प्रदर्शनकारी KPIs: ${topKPIs.map((kpi: { name: any; change: number; }) => `${kpi.name} ${kpi.change > 0 ? '+' : ''}${kpi.change.toFixed(1)}%`).join(', ')}। समग्र प्रदर्शन ${calculatedAnalytics?.performanceScore.overall.toFixed(1)}% है।`
+      : `Top performing KPIs: ${topKPIs.map((kpi: { name: any; change: number; }) => `${kpi.name} ${kpi.change > 0 ? '+' : ''}${kpi.change.toFixed(1)}%`).join(', ')}. Overall performance is ${calculatedAnalytics?.performanceScore.overall.toFixed(1)}%.`;
 
     return {
       intent: 'kpi_summary',
@@ -223,7 +223,7 @@ export default function ExecutiveVoiceCommands({ onCommandResult, className = ''
       },
       visualizations: [{
         type: 'chart',
-        config: { type: 'bar', metrics: topKPIs.map(kpi => kpi.id) }
+        config: { type: 'bar', metrics: topKPIs.map((kpi: { id: any; }) => kpi.id) }
       }]
     };
   };
@@ -234,8 +234,8 @@ export default function ExecutiveVoiceCommands({ onCommandResult, className = ''
     const topCompetitor = competitiveIntelligence.marketPosition.competitors[0];
 
     const summary = language === 'hi'
-      ? `हम बाज़ार में ${rank} नंबर पर हैं ${marketShare.toFixed(1)}% हिस्सेदारी के साथ। ${topCompetitor.name} अग्रणी है ${topCompetitor.marketShare.toFixed(1)}% के साथ। हमारे मुख्य फायदे हैं: ${competitiveIntelligence.competitiveAdvantages.slice(0, 2).map(adv => adv.advantage).join(', ')}।`
-      : `We rank #${rank} in the market with ${marketShare.toFixed(1)}% share. ${topCompetitor.name} leads with ${topCompetitor.marketShare.toFixed(1)}%. Our key advantages: ${competitiveIntelligence.competitiveAdvantages.slice(0, 2).map(adv => adv.advantage).join(', ')}.`;
+      ? `हम बाज़ार में ${rank} नंबर पर हैं ${marketShare.toFixed(1)}% हिस्सेदारी के साथ। ${topCompetitor.name} अग्रणी है ${topCompetitor.marketShare.toFixed(1)}% के साथ। हमारे मुख्य फायदे हैं: ${competitiveIntelligence.competitiveAdvantages.slice(0, 2).map((adv: { advantage: any; }) => adv.advantage).join(', ')}।`
+      : `We rank #${rank} in the market with ${marketShare.toFixed(1)}% share. ${topCompetitor.name} leads with ${topCompetitor.marketShare.toFixed(1)}%. Our key advantages: ${competitiveIntelligence.competitiveAdvantages.slice(0, 2).map((adv: { advantage: any; }) => adv.advantage).join(', ')}.`;
 
     return {
       intent: 'competitive_analysis',

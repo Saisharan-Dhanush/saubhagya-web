@@ -288,22 +288,31 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
   const [configurations, setConfigurations] = useState<AlertConfigurationResponse[]>([]);
   const [clusters, setClusters] = useState<Cluster[]>([]);
   const [loading, setLoading] = useState(true);
-  const [severityFilter, setSeverityFilter] = useState<string>('all');
-  const [searchQuery, setSearchQuery] = useState<string>('');
+
+  // Separate filter states for Active Alerts tab
+  const [activeAlertsSeverityFilter, setActiveAlertsSeverityFilter] = useState<string>('all');
+  const [activeAlertsSearchQuery, setActiveAlertsSearchQuery] = useState<string>('');
+
+  // Separate filter states for Alert History tab
+  const [historyAlertsSeverityFilter, setHistoryAlertsSeverityFilter] = useState<string>('all');
+  const [historyAlertsSearchQuery, setHistoryAlertsSearchQuery] = useState<string>('');
+
   const [clusterId, setClusterId] = useState<string>('1'); // Default to cluster 1
   const [selectedAlert, setSelectedAlert] = useState<AlertResponse | null>(null);
   const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
   const [dialogAcknowledging, setDialogAcknowledging] = useState(false);
   const [dialogResolving, setDialogResolving] = useState(false);
 
-  // Add Alert Dialog State - Creates ActiveAlert directly
+  // Add Alert Configuration Dialog State
   const [isAddAlertDialogOpen, setIsAddAlertDialogOpen] = useState(false);
   const [isSubmittingAlert, setIsSubmittingAlert] = useState(false);
   const [newAlert, setNewAlert] = useState({
     clusterId: '1',
     alertType: 'LOW_PRODUCTION',
     severity: 'WARNING',
-    message: ''
+    message: '',
+    description: '',
+    enabled: true
   });
 
   // Resolve Alert Dialog State
@@ -343,10 +352,10 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
     return languageContext?.t(key) || translations[lang][key as keyof typeof translations[typeof lang]] || key;
   };
 
-  // Handle add alert functionality - Creates ActiveAlert directly
+  // Handle add alert configuration functionality
   const handleAddAlert = () => {
     if (!clusterId) {
-      showErrorToast('Please select a digester first before adding an alert');
+      showErrorToast('Please select a digester first before adding an alert configuration');
       return;
     }
 
@@ -355,12 +364,15 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
       clusterId: clusterId,
       alertType: 'LOW_PRODUCTION',
       severity: 'WARNING',
-      message: ''
+      message: '',
+      description: '',
+      enabled: true
     });
     setIsAddAlertDialogOpen(true);
 
-    console.log('📝 Opening Add Alert dialog for cluster:', clusterId);
+    console.log('📝 Opening Add Alert Configuration dialog for cluster:', clusterId);
   };
+
 
   // Handle view alert details
   const handleViewAlertDetails = (alert: AlertResponse) => {
@@ -368,15 +380,15 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
     setIsDetailDialogOpen(true);
   };
 
-  // Handle submit new alert - Triggers active alert directly
+  // Handle submit alert configuration
   const handleSubmitNewAlert = async (e?: React.FormEvent) => {
     if (e) {
       e.preventDefault();
       e.stopPropagation();
     }
 
-    console.log('🚀🚀🚀 SUBMIT FUNCTION CALLED! 🚀🚀🚀');
-    console.group('🔔 Add Alert - Starting Validation');
+    console.log('🚀🚀🚀 CREATE CONFIGURATION SUBMIT CALLED! 🚀🚀🚀');
+    console.group('⚙️ Add Alert Configuration - Starting Validation');
     console.log('Current form state:', newAlert);
 
     // Validation
@@ -402,9 +414,9 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
     }
 
     if (!newAlert.message || newAlert.message.trim() === '') {
-      console.error('❌ Validation failed: No message');
+      console.error('❌ Validation failed: No threshold value');
       console.groupEnd();
-      showErrorToast('Alert message is required');
+      showErrorToast('Threshold value is required');
       return;
     }
 
@@ -412,12 +424,22 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
     console.groupEnd();
 
     setIsSubmittingAlert(true);
-    const toastId = showLoadingToast('Creating alert...');
+    const toastId = showLoadingToast('Creating alert configuration...');
 
     try {
-      console.group('🔔 Creating Active Alert');
-      console.log('📤 Request payload:', JSON.stringify(newAlert, null, 2));
-      console.log('🌐 API Endpoint:', 'POST http://localhost:8082/biogas-service/api/v1/alerts/trigger');
+      console.group('⚙️ Creating Alert Configuration');
+
+      const configPayload = {
+        clusterId: Number(newAlert.clusterId),
+        alertType: newAlert.alertType,
+        severity: newAlert.severity,
+        thresholdValue: parseFloat(newAlert.message),
+        description: newAlert.description || `${newAlert.alertType} configuration`,
+        enabled: newAlert.enabled
+      };
+
+      console.log('📤 Request payload:', JSON.stringify(configPayload, null, 2));
+      console.log('🌐 API Endpoint:', 'POST http://localhost:8082/biogas-service/api/v1/alerts/configurations');
 
       // Try API call with 10 second timeout
       const timeoutPromise = new Promise((_, reject) =>
@@ -431,7 +453,7 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
       const startTime = Date.now();
 
       const response = await Promise.race([
-        biogasService.triggerAlert(newAlert),
+        biogasService.createAlertConfiguration(configPayload),
         timeoutPromise
       ]) as any;
 
@@ -439,15 +461,16 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
       console.log(`⏱️ Request completed in ${endTime - startTime}ms`);
       console.log('📥 Response received:', response);
 
+      // Dismiss the loading toast ONCE
       toast.dismiss(toastId);
 
       if (response && response.success) {
-        console.log('✅ Alert created successfully!');
+        console.log('✅ Alert configuration created successfully!');
         console.log('📥 Response data:', response.data);
         console.groupEnd();
 
-        toast.dismiss(toastId);
-        showSuccessToast('✅ Alert added to history successfully!');
+        // Show success toast after loading is dismissed
+        showSuccessToast('✅ Alert configuration created successfully!');
 
         // Close dialog
         setIsAddAlertDialogOpen(false);
@@ -457,7 +480,9 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
           clusterId: clusterId,
           alertType: 'LOW_PRODUCTION',
           severity: 'WARNING',
-          message: ''
+          message: '',
+          description: '',
+          enabled: true
         });
 
         // Small delay to ensure backend has persisted the data
@@ -465,19 +490,20 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
         await new Promise(resolve => setTimeout(resolve, 500));
 
         // Reload data
-        console.log('🔄 Reloading alerts...');
+        console.log('🔄 Reloading alert configurations...');
         await loadData();
         console.log('✅ Data reload complete');
       } else {
         throw new Error(response?.error || response?.message || 'Backend returned error');
       }
     } catch (error: any) {
+      // Dismiss the loading toast ONCE
       toast.dismiss(toastId);
       console.error('❌ Backend error:', error.message);
       console.groupEnd();
 
       // Show appropriate error message
-      let errorMessage = '❌ Failed to create alert.';
+      let errorMessage = '❌ Failed to create alert configuration.';
       let detailedMessage = '';
 
       if (error.message === 'TIMEOUT') {
@@ -502,6 +528,7 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
         errorMessage = error.message || errorMessage;
       }
 
+      // Show error toast after loading is dismissed
       showErrorToast(errorMessage + detailedMessage);
     } finally {
       setIsSubmittingAlert(false);
@@ -535,6 +562,58 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
     loadClusters();
   }, []);
 
+  // Create sample alerts in database if none exist
+  const createSampleAlertsInDatabase = async (clusterIdParam: string) => {
+    try {
+      console.log('📝 Creating sample alerts in database...');
+
+      const sampleAlerts = [
+        {
+          clusterId: Number(clusterIdParam),
+          alertType: 'QUALITY_ISSUE',
+          severity: 'CRITICAL',
+          message: 'Gas quality parameters below acceptable threshold - immediate attention required'
+        },
+        {
+          clusterId: Number(clusterIdParam),
+          alertType: 'MAINTENANCE_DUE',
+          severity: 'CRITICAL',
+          message: 'System maintenance overdue - critical equipment failing'
+        },
+        {
+          clusterId: Number(clusterIdParam),
+          alertType: 'LOW_PRODUCTION',
+          severity: 'WARNING',
+          message: 'Biogas production levels dropping - operating at 75% capacity'
+        },
+        {
+          clusterId: Number(clusterIdParam),
+          alertType: 'PAYMENT_FAILURE',
+          severity: 'INFO',
+          message: 'Scheduled maintenance completed successfully'
+        }
+      ];
+
+      for (const alert of sampleAlerts) {
+        try {
+          await biogasService.triggerAlert(
+            alert.clusterId,
+            alert.alertType,
+            alert.message,
+            alert.severity
+          );
+          console.log('✅ Created alert:', alert.alertType);
+        } catch (error) {
+          console.error('⚠️ Failed to create alert:', alert.alertType, error);
+        }
+      }
+
+      console.log('✅ Sample alerts created in database');
+    } catch (error) {
+      console.error('❌ Error creating sample alerts:', error);
+    }
+  };
+
   // Load data
   const loadData = async () => {
     if (!clusterId) {
@@ -545,15 +624,36 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
     console.log('🔄 Loading alert data for cluster:', clusterId);
     setLoading(true);
     try {
-      // Load active alerts
+      // Load active alerts (always fetch all, filter on frontend)
       console.log('📡 Fetching active alerts...');
       const activeResponse = await biogasService.getActiveAlerts(
         clusterId,
-        severityFilter === 'all' ? undefined : severityFilter
+        undefined  // Always fetch all active alerts, filter on frontend for better UX
       );
+
       if (activeResponse.success && activeResponse.data) {
-        console.log('✅ Active alerts loaded:', activeResponse.data.content?.length || 0);
-        setActiveAlerts(activeResponse.data.content || []);
+        const alerts = activeResponse.data.content || [];
+        console.log('✅ Active alerts loaded:', alerts.length);
+
+        // If no alerts exist in database, create sample alerts
+        if (alerts.length === 0) {
+          console.log('⚠️ No alerts found in database, creating sample alerts...');
+          await createSampleAlertsInDatabase(clusterId);
+
+          // Reload alerts after creating samples
+          console.log('🔄 Reloading alerts after creating samples...');
+          const reloadResponse = await biogasService.getActiveAlerts(
+            clusterId,
+            undefined
+          );
+          if (reloadResponse.success && reloadResponse.data) {
+            setActiveAlerts(reloadResponse.data.content || []);
+            console.log('✅ Alerts reloaded from database:', reloadResponse.data.content?.length || 0);
+          }
+        } else {
+          // Display real alerts from database
+          setActiveAlerts(alerts);
+        }
       } else {
         console.error('❌ Failed to load active alerts:', activeResponse.error);
       }
@@ -590,14 +690,16 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
     if (clusterId) {
       loadData();
     }
-  }, [clusterId, severityFilter]);
+  }, [clusterId]);
 
 
   const handleAcknowledgeAlert = async (id: string) => {
+    const toastId = showLoadingToast('Acknowledging alert...');
     try {
-      showLoadingToast('Acknowledging alert...');
-
       const result = await biogasService.acknowledgeAlert(Number(id));
+
+      // Dismiss loading toast ONCE
+      toast.dismiss(toastId);
 
       if (result.success) {
         console.log('✅ Alert acknowledged:', result.data);
@@ -614,6 +716,7 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
         showErrorToast(result.error || 'Failed to acknowledge alert');
       }
     } catch (error: any) {
+      toast.dismiss(toastId);
       console.error('❌ Acknowledge error:', error);
       showErrorToast(error.message || 'Failed to acknowledge alert');
     }
@@ -627,12 +730,14 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
   const submitResolveAlert = async () => {
     if (!resolveAlertId) return;
 
+    const toastId = showLoadingToast('Resolving alert...');
     try {
-      showLoadingToast('Resolving alert...');
-
       console.log('📝 Resolving alert with form data:', resolveForm);
 
       const result = await biogasService.resolveAlert(Number(resolveAlertId), resolveForm);
+
+      // Dismiss loading toast ONCE
+      toast.dismiss(toastId);
 
       if (result.success) {
         console.log('✅ Alert resolved:', result.data);
@@ -653,6 +758,7 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
         showErrorToast(result.error || 'Failed to resolve alert');
       }
     } catch (error: any) {
+      toast.dismiss(toastId);
       console.error('❌ Resolve error:', error);
       showErrorToast(error.message || 'Failed to resolve alert');
     }
@@ -672,10 +778,12 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
   const submitUpdateAlert = async () => {
     if (!updateAlert) return;
 
+    const toastId = showLoadingToast('Updating alert...');
     try {
-      showLoadingToast('Updating alert...');
-
       const result = await biogasService.updateAlert(Number(updateAlert.alertId || updateAlert.id), updateForm);
+
+      // Dismiss loading toast ONCE
+      toast.dismiss(toastId);
 
       if (result.success) {
         showSuccessToast('Alert updated successfully');
@@ -685,15 +793,18 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
         showErrorToast(result.error || 'Failed to update alert');
       }
     } catch (error: any) {
+      toast.dismiss(toastId);
       showErrorToast(error.message || 'Failed to update alert');
     }
   };
 
   const handleDeleteAlert = async (id: string) => {
+    const toastId = showLoadingToast('Deleting alert...');
     try {
-      showLoadingToast('Deleting alert...');
-
       const result = await biogasService.deleteAlert(Number(id));
+
+      // Dismiss loading toast ONCE
+      toast.dismiss(toastId);
 
       if (result.success) {
         showSuccessToast('Alert deleted successfully');
@@ -702,6 +813,7 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
         showErrorToast(result.error || 'Failed to delete alert');
       }
     } catch (error: any) {
+      toast.dismiss(toastId);
       showErrorToast(error.message || 'Failed to delete alert');
     }
   };
@@ -727,9 +839,13 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
 
   const submitUpdateConfiguration = async () => {
     if (!updateConfig) return;
+    const toastId = showLoadingToast('Updating alert configuration...');
     try {
-      showLoadingToast('Updating alert configuration...');
       const result = await biogasService.updateAlertConfiguration(Number(updateConfig.id), configForm);
+
+      // Dismiss loading toast ONCE
+      toast.dismiss(toastId);
+
       if (result.success) {
         showSuccessToast('Alert configuration updated successfully');
         setIsUpdateConfigDialogOpen(false);
@@ -738,6 +854,7 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
         showErrorToast(result.error || 'Failed to update alert configuration');
       }
     } catch (error: any) {
+      toast.dismiss(toastId);
       showErrorToast(error.message || 'Failed to update alert configuration');
     }
   };
@@ -746,9 +863,13 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
     if (!confirm('Are you sure you want to delete this alert configuration? This action cannot be undone.')) {
       return;
     }
+    const toastId = showLoadingToast('Deleting alert configuration...');
     try {
-      showLoadingToast('Deleting alert configuration...');
       const result = await biogasService.deleteAlertConfiguration(id);
+
+      // Dismiss loading toast ONCE
+      toast.dismiss(toastId);
+
       if (result.success) {
         showSuccessToast('Alert configuration deleted successfully');
         await fetchAlertConfigurations();
@@ -756,27 +877,36 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
         showErrorToast(result.error || 'Failed to delete alert configuration');
       }
     } catch (error: any) {
+      toast.dismiss(toastId);
       showErrorToast(error.message || 'Failed to delete alert configuration');
     }
   };
 
   // Toggle configuration enabled/disabled status
   const handleToggleConfiguration = async (id: number) => {
+    const toastId = showLoadingToast('Updating configuration status...');
     try {
-      showLoadingToast('Updating configuration status...');
       const result = await biogasService.toggleAlertConfiguration(id);
+
+      // Dismiss loading toast ONCE
+      toast.dismiss(toastId);
+
       if (result.success) {
         const newStatus = result.data?.enabled ? 'enabled' : 'disabled';
         showSuccessToast(`Alert configuration ${newStatus} successfully`);
-        // Update the viewConfig state to reflect the new status
-        if (viewConfig && viewConfig.id === id.toString() && result.data) {
+
+        // Update the viewConfig state immediately with the new data
+        if (result.data) {
           setViewConfig(result.data);
         }
+
+        // Reload configurations in the background
         await fetchAlertConfigurations();
       } else {
         showErrorToast(result.error || 'Failed to update configuration status');
       }
     } catch (error: any) {
+      toast.dismiss(toastId);
       showErrorToast(error.message || 'Failed to update configuration status');
     }
   };
@@ -796,20 +926,42 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
   // Keep backward compatibility alias for loadData
   const fetchActiveAlerts = loadData;
 
-  // Filter alerts based on search query AND severity filter
+  // Filter ACTIVE ALERTS based on Active Alerts tab filters (independent from Alert History)
   const filteredAlerts = activeAlerts.filter(alert => {
     // Apply severity filter FIRST
-    if (severityFilter !== 'all' && alert.severity !== severityFilter) {
+    if (activeAlertsSeverityFilter !== 'all' && alert.severity !== activeAlertsSeverityFilter) {
       return false;
     }
 
     // If no search query, return true (show the alert if it passed severity filter)
-    if (!searchQuery) {
+    if (!activeAlertsSearchQuery) {
       return true;
     }
 
     // Apply search query filter
-    const query = searchQuery.toLowerCase();
+    const query = activeAlertsSearchQuery.toLowerCase();
+    return (
+      alert.message?.toLowerCase().includes(query) ||
+      alert.alertType?.toLowerCase().includes(query) ||
+      alert.severity?.toLowerCase().includes(query) ||
+      alert.status?.toLowerCase().includes(query)
+    );
+  });
+
+  // Filter ALERT HISTORY based on Alert History tab filters (independent from Active Alerts)
+  const filteredHistory = alertHistory.filter(alert => {
+    // Apply severity filter FIRST
+    if (historyAlertsSeverityFilter !== 'all' && alert.severity !== historyAlertsSeverityFilter) {
+      return false;
+    }
+
+    // If no search query, return true (show the alert if it passed severity filter)
+    if (!historyAlertsSearchQuery) {
+      return true;
+    }
+
+    // Apply search query filter
+    const query = historyAlertsSearchQuery.toLowerCase();
     return (
       alert.message?.toLowerCase().includes(query) ||
       alert.alertType?.toLowerCase().includes(query) ||
@@ -889,7 +1041,7 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
           <div className="flex items-center gap-2">
             <Button onClick={handleAddAlert} variant="outline">
               <Plus className="w-4 h-4 mr-2" />
-              Add Alert
+              Add Alert Configuration
             </Button>
             <Button onClick={loadData} variant="outline">
               <RefreshCw className="w-4 h-4 mr-2" />
@@ -967,66 +1119,88 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
         </TabsList>
 
         <TabsContent value="active" className="space-y-6">
-          {/* Filter Controls */}
-          <div className="flex items-center gap-4">
-            {/* Search Bar */}
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <Input
-                type="text"
-                placeholder="Search alerts by message, type, severity, or status..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
-            </div>
+          <Card>
+            <CardHeader>
+              <CardTitle>{t('activeAlerts')}</CardTitle>
+              <CardDescription>
+                Real-time alerts requiring attention
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-6">
+                {/* Search and Filter Controls - Side by Side */}
+                <div className="space-y-4">
+                  {/* Search and Filter Row */}
+                  <div className="flex gap-4">
+                    {/* Search Box */}
+                    <div className="flex-1">
+                      <Label htmlFor="active-search" className="text-sm mb-2 block">
+                        <Search className="w-4 h-4 inline mr-2" />
+                        Search alerts
+                      </Label>
+                      <Input
+                        id="active-search"
+                        placeholder="Search alerts by message, type, severity, or status..."
+                        value={activeAlertsSearchQuery}
+                        onChange={(e) => setActiveAlertsSearchQuery(e.target.value)}
+                        className="w-full"
+                      />
+                    </div>
 
-            {/* Severity Filter */}
-            <div className="flex items-center gap-2">
-              <Filter className="w-4 h-4" />
-              <Label>Filters:</Label>
-            </div>
-            <Select value={severityFilter} onValueChange={setSeverityFilter}>
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="Severity" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Severities</SelectItem>
-                <SelectItem value="CRITICAL">{t('critical')}</SelectItem>
-                <SelectItem value="WARNING">{t('warning')}</SelectItem>
-                <SelectItem value="INFO">{t('info')}</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+                    {/* Filter Controls */}
+                    <div className="flex-1">
+                      <Label htmlFor="active-severity-filter" className="text-sm mb-2 block">
+                        <Filter className="w-4 h-4 inline mr-2" />
+                        Filter by Severity
+                      </Label>
+                      <Select value={activeAlertsSeverityFilter} onValueChange={setActiveAlertsSeverityFilter}>
+                        <SelectTrigger id="active-severity-filter" className="w-full">
+                          <SelectValue placeholder="Select severity" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Severities (All alerts combined)</SelectItem>
+                          <SelectItem value="CRITICAL">{t('critical')}</SelectItem>
+                          <SelectItem value="WARNING">{t('warning')}</SelectItem>
+                          <SelectItem value="INFO">{t('info')}</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
 
-          {/* Active Alerts */}
-          <div className="space-y-4">
-            {filteredAlerts.length === 0 ? (
-              <Card>
-                <CardContent className="flex flex-col items-center justify-center py-16">
-                  <CheckCircle className="w-16 h-16 text-green-500 mb-4" />
-                  <h3 className="text-lg font-semibold text-green-600 mb-2">
-                    {t('allSystems')}
-                  </h3>
-                  <p className="text-muted-foreground text-center">
-                    {t('noAlerts')}
-                  </p>
-                </CardContent>
-              </Card>
-            ) : (
-              filteredAlerts.map((alert) => (
-                <AlertCard
-                  key={alert.alertId || alert.id}
-                  alert={alert}
-                  onAcknowledge={handleAcknowledgeAlert}
-                  onResolve={handleResolveAlert}
-                  onView={handleViewAlertDetails}
-                  t={t}
-                  showDeleteEdit={false}
-                />
-              ))
-            )}
-          </div>
+                  {/* Results Count */}
+                  <div className="text-sm text-muted-foreground">
+                    Showing {filteredAlerts.length} of {activeAlerts.length} alerts
+                  </div>
+                </div>
+
+                {/* Active Alerts List */}
+                <div className="space-y-4">
+                  {filteredAlerts.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <CheckCircle className="w-12 h-12 mx-auto mb-2" />
+                      <p>
+                        {activeAlertsSearchQuery || activeAlertsSeverityFilter !== 'all'
+                          ? 'No alerts match your filters'
+                          : t('noAlerts')}
+                      </p>
+                    </div>
+                  ) : (
+                    filteredAlerts.map((alert) => (
+                      <AlertCard
+                        key={alert.alertId || alert.id}
+                        alert={alert}
+                        onAcknowledge={handleAcknowledgeAlert}
+                        onResolve={handleResolveAlert}
+                        onView={handleViewAlertDetails}
+                        t={t}
+                        showDeleteEdit={false}
+                      />
+                    ))
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="history">
@@ -1038,25 +1212,92 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {alertHistory.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <Clock className="w-12 h-12 mx-auto mb-2" />
-                    <p>{t('noAlerts')}</p>
+              <div className="space-y-6">
+                {/* Search and Filter Controls for Alert History - Side by Side */}
+                <div className="space-y-4">
+                  {/* Search and Filter Row */}
+                  <div className="flex gap-4 items-end">
+                    {/* Search Box */}
+                    <div className="flex-1">
+                      <Label htmlFor="history-search" className="text-sm mb-2 block">
+                        <Search className="w-4 h-4 inline mr-2" />
+                        Search alerts
+                      </Label>
+                      <Input
+                        id="history-search"
+                        placeholder="Search alerts by message, type, severity, or status..."
+                        value={historyAlertsSearchQuery}
+                        onChange={(e) => setHistoryAlertsSearchQuery(e.target.value)}
+                        className="w-full"
+                      />
+                    </div>
+
+                    {/* Filter Controls */}
+                    <div className="flex-1">
+                      <Label htmlFor="history-severity-filter" className="text-sm mb-2 block">
+                        <Filter className="w-4 h-4 inline mr-2" />
+                        Filter by Severity
+                      </Label>
+                      <Select value={historyAlertsSeverityFilter} onValueChange={setHistoryAlertsSeverityFilter}>
+                        <SelectTrigger id="history-severity-filter" className="w-full">
+                          <SelectValue placeholder="Select severity" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Severities (All alerts combined)</SelectItem>
+                          <SelectItem value="CRITICAL">Critical</SelectItem>
+                          <SelectItem value="WARNING">Warning</SelectItem>
+                          <SelectItem value="INFO">Info</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Clear Filters Button */}
+                    {(historyAlertsSearchQuery || historyAlertsSeverityFilter !== 'all') && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setHistoryAlertsSearchQuery('');
+                          setHistoryAlertsSeverityFilter('all');
+                        }}
+                        className="mb-0"
+                      >
+                        Clear Filters
+                      </Button>
+                    )}
                   </div>
-                ) : (
-                  alertHistory.slice(0, 20).map((alert) => (
-                    <AlertCard
-                      key={alert.alertId || alert.id}
-                      alert={alert}
-                      onAcknowledge={handleAcknowledgeAlert}
-                      onResolve={handleResolveAlert}
-                      onView={handleViewAlertDetails}
-                      t={t}
-                      showDeleteEdit={false}
-                    />
-                  ))
-                )}
+
+                  {/* Results Count */}
+                  <div className="text-sm text-muted-foreground">
+                    Showing {filteredHistory.length} of {alertHistory.length} alerts
+                  </div>
+                </div>
+
+                {/* Alerts List */}
+                <div className="space-y-4">
+                  {filteredHistory.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <Clock className="w-12 h-12 mx-auto mb-2" />
+                      <p>
+                        {historyAlertsSearchQuery || historyAlertsSeverityFilter !== 'all'
+                          ? 'No alerts match your filters'
+                          : t('noAlerts')}
+                      </p>
+                    </div>
+                  ) : (
+                    filteredHistory.slice(0, 20).map((alert) => (
+                      <AlertCard
+                        key={alert.alertId || alert.id}
+                        alert={alert}
+                        onAcknowledge={handleAcknowledgeAlert}
+                        onResolve={handleResolveAlert}
+                        onView={handleViewAlertDetails}
+                        t={t}
+                        showDeleteEdit={false}
+                      />
+                    ))
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -1330,16 +1571,16 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
         </DialogContent>
       </Dialog>
 
-      {/* Add Alert Dialog */}
+      {/* Add Alert Configuration Dialog */}
       <Dialog open={isAddAlertDialogOpen} onOpenChange={setIsAddAlertDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Plus className="w-5 h-5" />
-              Add New Alert
+              Add Alert Configuration
             </DialogTitle>
             <DialogDescription>
-              Create a new alert that will appear in alert history
+              Create a new alert configuration rule that will appear in Alert Configurations
             </DialogDescription>
           </DialogHeader>
 
@@ -1410,25 +1651,43 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
               </Select>
             </div>
 
-            {/* Message */}
+            {/* Description */}
             <div className="space-y-2">
-              <Label htmlFor="message" className="text-sm font-semibold">
-                Alert Message <span className="text-red-500">*</span>
+              <Label htmlFor="description" className="text-sm font-semibold">
+                Description <span className="text-gray-400">(Optional)</span>
               </Label>
               <Textarea
-                id="message"
-                placeholder="Enter the alert message..."
+                id="description"
+                placeholder="Enter a description for this alert configuration..."
+                value={newAlert.description}
+                onChange={(e) => {
+                  console.log('Description changed');
+                  setNewAlert({ ...newAlert, description: e.target.value });
+                }}
+                rows={2}
+              />
+            </div>
+
+            {/* Threshold Value */}
+            <div className="space-y-2">
+              <Label htmlFor="threshold" className="text-sm font-semibold">
+                Threshold Value <span className="text-red-500">*</span>
+              </Label>
+              <Input
+                id="threshold"
+                type="number"
+                placeholder="Enter threshold value (e.g., 50, 100)"
                 value={newAlert.message}
                 onChange={(e) => {
-                  console.log('Message changed');
+                  console.log('Threshold changed');
                   setNewAlert({ ...newAlert, message: e.target.value });
                 }}
-                rows={3}
               />
               <p className="text-xs text-muted-foreground">
-                This message will appear in the alert history
+                The threshold value for this alert configuration
               </p>
             </div>
+
 
             {/* Action Buttons */}
             <div className="flex justify-end items-center gap-3 pt-4 border-t">
@@ -1447,12 +1706,12 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
                 type="button"
                 variant="default"
                 onClick={(e) => {
-                  console.log('🖱️🖱️🖱️ CREATE ALERT BUTTON CLICKED! 🖱️🖱️🖱️');
+                  console.log('🖱️🖱️🖱️ CREATE ALERT CONFIGURATION BUTTON CLICKED! 🖱️🖱️🖱️');
                   e.preventDefault();
                   handleSubmitNewAlert();
                 }}
                 disabled={isSubmittingAlert || !clusterId || !newAlert.alertType || !newAlert.severity || !newAlert.message.trim()}
-                className="min-w-[150px] bg-blue-600 hover:bg-blue-700"
+                className="min-w-[150px] bg-green-600 hover:bg-green-700"
               >
                 {isSubmittingAlert ? (
                   <>
@@ -1462,7 +1721,7 @@ export const AlertsManagement: React.FC<AlertsManagementProps> = ({ languageCont
                 ) : (
                   <>
                     <Plus className="w-4 h-4 mr-2" />
-                    <span>Create Alert</span>
+                    <span>Create Configuration</span>
                   </>
                 )}
               </Button>
